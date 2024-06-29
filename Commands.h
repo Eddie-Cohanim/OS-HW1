@@ -2,6 +2,8 @@
 #define SMASH_COMMAND_H_
 
 #include <vector>
+#include <map>
+#include <iostream>
 
 #define COMMAND_MAX_LENGTH (200)
 #define COMMAND_MAX_ARGS (20)
@@ -9,22 +11,21 @@
 
 class Command 
 {
-protected:
-    char* m_cmd_line;
-    char *m_arg_values[COMMAND_MAX_ARGS + 1];
-    int m_arg_count;
-    bool m_background;//?????????????????????????????????????????????????????????????????????????
+    protected:
+        char* m_cmd_line;
+        char *m_arg_values[COMMAND_MAX_ARGS + 1];
+        int m_arg_count;
+        bool m_background;//?????????????????????????????????????????????????????????????????????????
 
+    public:
+        char* m_cmd_line_with_background;
+        Command(const char *cmd_line, bool is_background);
+        Command(const char *cmd_line);
 
-public:
-    char* m_cmd_line_with_background;
-    Command(const char *cmd_line, bool is_background);
-    Command(const char *cmd_line);
+        virtual ~Command();
 
-    virtual ~Command();
-
-    virtual void execute() = 0;
-    //virtual void prepare();
+        virtual void execute() = 0;
+        //virtual void prepare();
     //virtual void cleanup();
     // TODO: Add your extra methods if needed
 };
@@ -39,13 +40,60 @@ public:
 
 class ExternalCommand : public Command 
 {
-public:
-    ExternalCommand(const char *cmd_line);
+    private:
+        bool m_complex;
+        
+    public:
+        ExternalCommand(const char *cmd_line);
 
-    virtual ~ExternalCommand() {}
+        virtual ~ExternalCommand() {}
 
-    void execute() override;
+        void execute() override;
 };
+
+
+///..........................JOBS DECLARATIONS.........................///
+
+class JobsList 
+{
+    public:
+        class JobEntry 
+        {
+            public:
+                int m_jobId;
+                pid_t m_jobPid;
+                std::string m_jobName;
+                JobEntry(int id, int pid, char* name, bool isStopped);
+                bool m_isStopped;
+        };
+        
+        std::vector<JobEntry> m_listOfJobs;
+    
+        JobsList() = default;
+
+        ~JobsList() = default;
+
+        void addJob(int pid, char* name, bool isStopped = false);
+
+        void printJobsList();
+
+        void killAllJobs();
+
+        void removeFinishedJobs();
+
+        JobEntry *getJobById(int jobId);
+
+        void removeJobById(int jobId);
+
+        JobEntry *getLastJob(int *lastJobId);
+
+        JobEntry *getLastStoppedJob(int *jobId);
+        // TODO: Add extra methods or modify exisitng ones as needed
+};
+
+
+///..........................SPECIAL IN COMMANDS.........................///
+
 
 class PipeCommand : public Command 
 {
@@ -71,29 +119,48 @@ public:
 
 class RedirectionCommand : public Command 
 {
-    // TODO: Add your data members
-public:
-    explicit RedirectionCommand(const char *cmd_line);
+    private:
+        bool append;
+        std::string commandLine;
+        Command *commandToExecute;
+        std::string outPath;
+        std::string command;
 
-    virtual ~RedirectionCommand() {}
+    public:
+        explicit RedirectionCommand(const char *cmd_line);
 
-    void execute() override;
+        virtual ~RedirectionCommand() {}
+
+        void execute() override;
 };
 
 
 ///..........................BUILT IN COMMANDS.........................///
 
 
+class JobsCommand : public BuiltInCommand {
+    private:
+        JobsList* m_jobs;
+    public:
+        JobsCommand(const char *cmd_line, JobsList *jobs);
+
+        virtual ~JobsCommand() {}
+
+        void execute() override;
+};
+
 class ChangeDirCommand : public BuiltInCommand 
 {
     private:
+        std::string m_lastPwd;
+        char* m_cmdLine;
 
-// TODO: Add your data members public:
-    ChangeDirCommand(const char *cmd_line, char **plastPwd);
+    public:
+        ChangeDirCommand(const char *cmd_line, std::string pLastPwd);
 
-    virtual ~ChangeDirCommand() {}
+        virtual ~ChangeDirCommand() {}
 
-    void execute() override;
+        void execute() override;
 };
 
 class GetCurrDirCommand : public BuiltInCommand
@@ -126,116 +193,39 @@ public:
     void execute() override;
 };
 
-
-
-// class PwdCommand : public BuiltInCommand 
-// {
-// public:
-//     PwdCommand(const char* cmd_line);
-
-//     virtual ~PwdCommand() {}
-
-//     void execute() override;
-// };
-
-
-
-class CdCommand : public BuiltInCommand 
-{
-public:
-    CdCommand(const char* cmd_line);
-
-    virtual ~CdCommand() {}
-
-    void execute() override;
-};
-
-
-
-
-
-
-
-
-
-
-
-
-class JobsList;
-
 class QuitCommand : public BuiltInCommand {
-// TODO: Add your data members public:
-    QuitCommand(const char *cmd_line, JobsList *jobs);
+    private:
+        JobsList* m_jobs;
 
-    virtual ~QuitCommand() {}
-
-    void execute() override;
-};
-
-class JobsList 
-{
     public:
-        class JobEntry 
-        {
-            public:
-                int m_jobId;
-                pid_t m_jobPid;
-                std::string m_jobName;
-                JobEntry(int id, int pid, char* name);
-        };
-        
-        std::vector<JobEntry> m_listOfJobs;
-    
-        JobsList() = default;
+        QuitCommand(const char *cmd_line, JobsList *jobs);
 
-        ~JobsList() = default;
-
-        void addJob(Command *cmd, bool isStopped = false);
-
-        void printJobsList();
-
-        void killAllJobs();
-
-        void removeFinishedJobs();
-
-        JobEntry *getJobById(int jobId);
-
-        void removeJobById(int jobId);
-
-        JobEntry *getLastJob(int *lastJobId);
-
-        JobEntry *getLastStoppedJob(int *jobId);
-        // TODO: Add extra methods or modify exisitng ones as needed
-    };
-
-    class JobsCommand : public BuiltInCommand {
-        // TODO: Add your data members
-    public:
-        JobsCommand(const char *cmd_line, JobsList *jobs);
-
-        virtual ~JobsCommand() {}
+        virtual ~QuitCommand() {}
 
         void execute() override;
 };
 
 class KillCommand : public BuiltInCommand {
-    // TODO: Add your data members
-public:
-    KillCommand(const char *cmd_line, JobsList *jobs);
+    private:
+        JobsList* m_jobs;
+    public:
+        KillCommand(const char *cmd_line, JobsList *jobs);
 
-    virtual ~KillCommand() {}
+        virtual ~KillCommand() {}
 
-    void execute() override;
+        void execute() override;
 };
 
 class ForegroundCommand : public BuiltInCommand {
-    // TODO: Add your data members
-public:
-    ForegroundCommand(const char *cmd_line, JobsList *jobs);
+    private:
+        JobsList* m_jobs;
 
-    virtual ~ForegroundCommand() {}
+    public:
+        ForegroundCommand(const char *cmd_line, JobsList *jobs);
 
-    void execute() override;
+        virtual ~ForegroundCommand() {}
+
+        void execute() override;
 };
 
 class ListDirCommand : public BuiltInCommand {
@@ -263,6 +253,8 @@ public:
     virtual ~aliasCommand() {}
 
     void execute() override;
+    
+    bool checkValidName(std::string name);
 };
 
 class unaliasCommand : public BuiltInCommand {
@@ -275,16 +267,19 @@ public:
 };
 
 
+///......................SMALL SHELL DECLERATION.......................///
+
+
 class SmallShell {
 private:
-    char* m_prompt;
-    int m_forground_id;
+    std::string m_prompt;
+    int m_foregroundId;
     SmallShell();
-    std::string m_last_pwd;
 
 public:
-    std::string m_last_pwd;
+    std::string m_lastPwd;
     JobsList m_jobs;
+    std::map<std::string, std::string> m_aliases;
 
     Command *CreateCommand(const char *cmd_line);
 
@@ -302,9 +297,9 @@ public:
     void executeCommand(const char *cmd_line);
     void setPrompt(const char *newPrompt);
     std::string getPrompt() const; 
-    void setForground(int forground_id);
-    int getForground();
-    void setLastPwd(char* lastPwd);
+    void setForeground(int foregroundId);
+    int getForeground();
+    void setLastPwd(const char* lastPwd);
     std::string getLastPwd();
 };
 
