@@ -12,6 +12,7 @@
 
 using namespace std;
 
+
 const std::string WHITESPACE = " \n\r\t\f\v";
 static const     std::vector<std::string> reservedKeywords = {
         "quit", "lisdir", "chprompt", "showpid", "cd", "jobs", "fg", "kill", "pwd", "alias","unalias","kill",">",">>","|","getuser","watch"
@@ -27,6 +28,15 @@ static const     std::vector<std::string> reservedKeywords = {
 #define FUNC_ENTRY()
 #define FUNC_EXIT()
 #endif
+
+#define WRITEONLY 1 
+#define CREATE 0X100
+#define TRUNCATE 0X200
+#define READWRITE 2
+#define APPEND 0X8
+#define ALLPERMISSIONS 0655
+#define FAIL -1
+
 
 string _ltrim(const std::string &s) 
 {
@@ -86,6 +96,67 @@ void _removeBackgroundSign(char *cmd_line)
     cmd_line[str.find_last_not_of(WHITESPACE, idx) + 1] = 0;
 }
 
+
+///..................HELPER FUNCTION IMPELEMENTATIONS..................///
+
+
+void basicExternalCommand(char* firstArgValue, char** argValueArray)
+{
+  if(execvp(firstArgValue, argValueArray) == FAIL)
+  {
+    checkSysCall("execvp", FAIL);
+  }
+}
+
+void complexExternalCommand(char* cmdLine)
+{
+  char* arguments [4];
+  arguments[0] = "/bin/bash";
+  arguments[1] = "-c";
+  arguments[2] = cmdLine;
+  arguments[3] = nullptr;
+  checkSysCall("execv", execv("/bin/bash", arguments));
+}
+
+void checkSysCallPtr(char* sysCall, char* currDirPtr)
+{
+  if (currDirPtr == nullptr)
+  {
+    std::string tmp = "smash error: "; 
+    tmp += sysCall;                  
+    tmp += " failed";                  
+    perror(tmp.c_str()); //???????????
+  }
+}
+
+void checkSysCall(char* sysCall, int currDir)
+{
+  if (currDir == -1)
+  {
+    std::string tmp = "smash error: "; 
+    tmp += sysCall;                  
+    tmp += " failed";                  
+    perror(tmp.c_str()); //???????????
+  }
+}
+
+void parsePipeCommand(const string& commandString, const char** parsedPipeCommand)
+{
+  int pipeLocation = commandString.find('|');
+  parsedPipeCommand[0] = _trim(commandString.substr(0, pipeLocation)).c_str();
+  
+  if(commandString.find("|&", pipeLocation) == std::string::npos)
+  {
+    parsedPipeCommand[1] = "|";
+    parsedPipeCommand[2] = _trim(commandString.substr(pipeLocation + 1)).c_str(); 
+  }
+  else
+  {
+    parsedPipeCommand[1] = "|&";
+    parsedPipeCommand[2] = _trim(commandString.substr(pipeLocation + 2)).c_str() ;
+  }
+}
+
 ///........................SHELL IMPLEMENTATION........................///
 
 void SmallShell::setForeground(int foregroundId)
@@ -138,7 +209,15 @@ Command *SmallShell::CreateCommand(const char *cmd_line)
   string command = _trim(string(cmd_line));
   string firstWord = command.substr(0, command.find_first_of(" \n"));
 
-  if (command.find_first_of(">") != std::string::npos)
+  if (command.find_first_of("|") != std::string::npos)
+  {
+    char* parsedPipeCommand[3];
+    std::string commandString (cmd_line);
+    parsePipeCommand(commandString, parsedPipeCommand);
+    return new PipeCommand(cmd_line, (parsedPipeCommand[0]), parsedPipeCommand[2],
+                           parsedPipeCommand[1] == "|&");
+  }
+  else if (command.find_first_of(">") != std::string::npos)
   {
       return new RedirectionCommand(cmd_line);
   }
@@ -375,7 +454,7 @@ void ChangeDirCommand:: execute()
     checkSysCallPtr("cd:", getcwd(lastDir, sizeof(char) * ADRRESS_MAX_LENGTH));
     int result = chdir(SmallShell::getInstance().m_lastPwd.c_str());
     checkSysCall("cd:", result);
-    if(result != -1)
+    if(result != FAIL)
     {
       SmallShell::getInstance().setLastPwd(lastDir);
     }
@@ -385,7 +464,7 @@ void ChangeDirCommand:: execute()
   checkSysCallPtr("cd:", getcwd(lastDir, sizeof(char) * ADRRESS_MAX_LENGTH));
   int result = chdir(m_arg_values[1]);
   checkSysCall("cd:", result);
-  if(result != -1)
+  if(result != FAIL)
   {
     SmallShell::getInstance().setLastPwd(lastDir);
   }
@@ -500,7 +579,7 @@ void KillCommand::execute()
   
   int result = kill(jobPid, signal);
   checkSysCall("kill", result);
-  if(result != -1)
+  if(result != FAIL)
   {
     std::cout << "signal number " << std::to_string(signal) << " was sent to pid " << std::to_string(jobPid) << std::endl;
   }
@@ -534,6 +613,13 @@ bool aliasCommand::checkValidName(std::string name)
   return false;
 }
 
+
+void aliasCommand::insertAlias(std::string name, std::string Command)
+{
+  SmallShell &smash = SmallShell::getInstance();
+  smash.m_aliases_new.push_back({name, Command});
+}
+
 void aliasCommand::execute()
 {
   if(m_arg_count != 3 || m_arg_count != 1)
@@ -543,9 +629,9 @@ void aliasCommand::execute()
   }
   if( m_arg_count == 1)
   {
-        for (const auto &alias : SmallShell::getInstance().m_aliases) {
-        cout << alias.first << "='" << alias.second << "'" << endl;
-    }
+        for (const auto &alias : SmallShell::getInstance().m_aliases_new) {
+          cout << alias.first << "='" << alias.second << "'" << endl;
+        }
     return;
   }
   if(checkValidName(m_arg_values[1]) == false)
@@ -562,7 +648,7 @@ void aliasCommand::execute()
           return;
         }
   }
-  SmallShell::getInstance().m_aliases.insert({m_arg_values[1], m_arg_values[2]});  
+  insertAlias(m_arg_values[1], m_arg_values[2]);  
 
 }
 
@@ -573,8 +659,23 @@ void unaliasCommand::execute()
     std::cerr << "smash error: unalias: not enough arguments" << std::endl;
     return;
   }
+  SmallShell &smash = SmallShell::getInstance();
+  for(int i = 1; i < m_arg_count; i++){
+    bool found = false;
+    for(auto it = smash.m_aliases_new.begin(); it != smash.m_aliases_new.end(); ++it) {
+        if(it->second == m_arg_values[i]) {
+            smash.m_aliases_new.erase(it);
+            found = true;
+            break;  // Exit the loop after erasing the element
+        }
+    }
+    if(!found) {
+        std::cerr << "smash error: unalias: " << m_arg_values[i] << " alias does not exist" << std::endl;
+    }
+    }
   
 }
+
 
 ///..................EXTERNAL COMMAND IMPELEMENTATIONS.................///
 
@@ -604,7 +705,7 @@ void ExternalCommand::execute()
     {
       basicExternalCommand(m_arg_values[0], m_arg_values);
     }
-
+    
     else//complex command
     {
       complexExternalCommand(m_cmd_line);
@@ -633,50 +734,185 @@ void ExternalCommand::execute()
 ///..................SPECIAL COMMANDS IMPLEMENTATIONS..................///
 
 
-
-
-
-///..................HELPER FUNCTION IMPELEMENTATIONS..................///
-
-void basicExternalCommand(char* firstArgValue, char** argValueArray)
+RedirectionCommand::RedirectionCommand(const char* cmd_line) : Command(cmd_line)
 {
-  if(execvp(firstArgValue, argValueArray) == -1)
+  std::string trimmedCmdLine = _trim(cmd_line);
+  int arrowLocation = trimmedCmdLine.find_first_of('>');
+  m_append = false;
+  m_commandLine = trimmedCmdLine.substr(0, arrowLocation);
+
+  if('>' == trimmedCmdLine[arrowLocation + 1])
   {
-    checkSysCall("execvp", -1);
+    //arrowLocation++; only relevent if we change the way we find the out path
+    m_append = true;
+  }
+
+  m_outPath =  m_arg_values[3];  //_trim(std::string(m_arg_values[3]));
+  //should be the path, if not then we can trim the line further and
+  // use that instead and have outpath be a string
+}
+
+void RedirectionCommand::execute()
+{
+  int newPathFileDiscriptor;
+  if(m_append == true)
+  {
+    checkSysCall("open", newPathFileDiscriptor = open(m_outPath, CREATE | READWRITE | APPEND, ALLPERMISSIONS ));
+  }
+  else
+  {
+    checkSysCall("open", newPathFileDiscriptor = open(m_outPath, WRITEONLY | CREATE | TRUNCATE , ALLPERMISSIONS));
+  }
+
+  if(newPathFileDiscriptor == FAIL)
+  {
+    std::cerr << "smash error: open failed" << std::endl;
+    return; 
+  }
+
+  int oldPathFileDiscriptor = dup(1); // 1 --> output stream of the process
+  dup2(newPathFileDiscriptor, 1);
+  m_commandToExecute = SmallShell::getInstance().CreateCommand(m_commandLine.c_str());
+  m_commandToExecute->execute();
+  dup2(oldPathFileDiscriptor, 1);
+  checkSysCall("close", close(newPathFileDiscriptor));
+}
+
+GetUserCommand::GetUserCommand(const char *cmd_line) : BuiltInCommand(cmd_line) {}
+
+void GetUserCommand::execute()
+{
+  if(m_arg_count < 2)
+  {
+    std::cerr << "smash error: getuser: not enough arguments" << std::endl;
+    return;
+  }
+  string procpath = "/proc/" + string(m_arg_values[2]) + "/status";
+  struct stat procPathStat;
+  int result = stat(procpath.c_str(), &procPathStat);
+  checkSysCall("stat", result);
+
+  if(result == FAIL)
+  {
+    std::cerr << "smash error: getuser: " << m_arg_values[2] << " does not exist" << std::endl; //may be diffrent need to check!!
+    return;
+  }
+
+  std::cout << "User: " << procPathStat.st_uid << std::endl;
+  std::cout << "Group: " << procPathStat.st_gid << std::endl;
+  
+}
+
+PipeCommand::PipeCommand(const char* cmd_line, const char* firstCommand,
+                         const char* secondCommand, bool printToError = false):
+  Command(cmd_line),
+  m_printToError(printToError)
+{
+  m_firstCommand = SmallShell::getInstance().CreateCommand(firstCommand);
+  m_secondCommand = SmallShell::getInstance().CreateCommand(secondCommand);
+}
+
+PipeCommand::~PipeCommand()
+{
+  delete m_firstCommand;
+  delete m_secondCommand;
+}
+
+void PipeCommand::execute()
+{
+  int pipeFileDescriptor[2];
+  int writeEnd;
+  if(m_printToError == true)
+  {
+    writeEnd = STDERR_FILENO;
+  }
+  else
+  {
+    writeEnd = STDOUT_FILENO;
+  }
+  
+  if (pipe(pipeFileDescriptor) == FAIL) 
+  {
+    perror("smash error: pipe failed");
+    return;
+  }
+
+  pid_t firstPid = fork();
+  if (firstPid == FAIL) 
+  {
+    perror("smash error: fork failed");
+    return;
+  }
+  if (firstPid == 0) 
+  {
+    close(pipeFileDescriptor[0]);
+    if (dup2(pipeFileDescriptor[1], writeEnd) == FAIL)
+    {
+      perror("smash error: dup2 failed");
+      return;
+    }
+    close(pipeFileDescriptor[1]);
+    m_firstCommand->execute();
+    exit(0);
+  }
+
+  pid_t secondPid = fork();
+  if (secondPid == FAIL) 
+  {
+    perror("smash error: fork failed");
+    return;
+  }
+  if (secondPid == 0) 
+  {
+  close(pipeFileDescriptor[1]);
+  if (dup2(pipeFileDescriptor[0], STDIN_FILENO) == FAIL) 
+  {
+    perror("smash error: dup2 failed");
+    return;
+  }
+  close(pipeFileDescriptor[0]);
+  m_secondCommand->execute();
+  exit(0);
+  }
+
+  close(pipeFileDescriptor[0]);
+  close(pipeFileDescriptor[1]);
+  int status;
+  if (waitpid(firstPid, &status, 0) == FAIL) 
+  {
+    perror("smash error: waitpid failed");
+    return;
+  }
+  if (waitpid(secondPid, &status, 0) == FAIL) 
+  {
+    perror("smash error: waitpid failed");
+    return;
   }
 }
 
-void complexExternalCommand(char* cmdLine)
+
+
+
+bool WatchCommand::isInterval(std::string interval)
 {
-  char* arguments [4];
-  arguments[0] = "/bin/bash";
-  arguments[1] = "-c";
-  arguments[2] = cmdLine;
-  arguments[3] = nullptr;
-  checkSysCall("execv", execv("/bin/bash", arguments));
+  if(interval.find_first_not_of("123456789") == std::string::npos)
+  {
+    return true;
+  }
+  return false;
 }
 
-void checkSysCallPtr(char* sysCall, char* currDirPtr)
+
+
+WatchCommand::WatchCommand(const char *cmd_line): Command(cmd_line) {}
+
+void WatchCommand::execute()
 {
-  if (currDirPtr == nullptr)
-  {
-    std::string tmp = "smash error: "; 
-    tmp += sysCall;                  
-    tmp += " failed";                  
-    perror(tmp.c_str()); //???????????
-  }
+  
 }
 
-void checkSysCall(char* sysCall, int currDir)
-{
-  if (currDir == -1)
-  {
-    std::string tmp = "smash error: "; 
-    tmp += sysCall;                  
-    tmp += " failed";                  
-    perror(tmp.c_str()); //???????????
-  }
-}
+
+
 
 
 

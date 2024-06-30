@@ -97,13 +97,18 @@ class JobsList
 
 class PipeCommand : public Command 
 {
-    // TODO: Add your data members
-public:
-    PipeCommand(const char *cmd_line);
+    private:
+        bool m_printToError;
+        Command* m_firstCommand;
+        Command* m_secondCommand;
 
-    virtual ~PipeCommand() {}
+    public:
+        PipeCommand(const char* cmd_line, const char* firstCommand,
+                    const char* secondCommand, bool printToError = false);
 
-    void execute() override;
+        virtual ~PipeCommand() {}
+
+        void execute() override;
 };
 
 class WatchCommand : public Command 
@@ -115,16 +120,19 @@ public:
     virtual ~WatchCommand() {}
 
     void execute() override;
+
+    bool isInterval(std::string interval);
 };
 
 class RedirectionCommand : public Command 
 {
     private:
-        bool append;
-        std::string commandLine;
-        Command *commandToExecute;
-        std::string outPath;
-        std::string command;
+        bool m_append;
+        std::string m_commandLine;
+        //std::string m_outPath;
+        const char* m_outPath;
+        std::string m_command;
+        Command* m_commandToExecute;
 
     public:
         explicit RedirectionCommand(const char *cmd_line);
@@ -255,6 +263,8 @@ public:
     void execute() override;
     
     bool checkValidName(std::string name);
+
+    void insertAlias(std::string name, std::string command);
 };
 
 class unaliasCommand : public BuiltInCommand {
@@ -279,7 +289,7 @@ private:
 public:
     std::string m_lastPwd;
     JobsList m_jobs;
-    std::map<std::string, std::string> m_aliases;
+    std::vector<pair<std::string, std::string>> m_aliases_new;
 
     Command *CreateCommand(const char *cmd_line);
 
