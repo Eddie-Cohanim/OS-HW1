@@ -383,6 +383,20 @@ JobsList::JobEntry* JobsList::getLastJob(int* lastJobId)
 }
 
 
+void JobsList::JobEntry::killJob() const {
+    if (kill(_jobPid, SIGKILL) == -1) {
+        perror("smash error: kill failed");
+    }
+}
+
+JobsList::~JobsList()
+{
+  for( auto &job : m_listOfJobs)
+  {
+    job.killJob();
+  }
+}
+
 ///.....................COMMAND IMPLEMENTATION.........................///
 
 
@@ -411,9 +425,11 @@ Command::~Command()
 
 ///.................BUILT IN COMMAND IMPELEMENTATIONS..................///
 
+////////
 
 BuiltInCommand::BuiltInCommand (const char *cmd_line) : Command(cmd_line) {}
 
+ChpromptCommand::ChpromptCommand(const char* cmd_line) : BuiltInCommand(cmd_line) {}
 
 void ChpromptCommand::execute()
 {
