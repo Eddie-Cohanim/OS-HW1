@@ -103,10 +103,10 @@ class PipeCommand : public Command
         Command* m_secondCommand;
 
     public:
-        PipeCommand(const char* cmd_line, const char* firstCommand,
-                    const char* secondCommand, bool printToError = false);
+        PipeCommand(const char* cmd_line, std::string firstCommand,
+                    std::string secondCommand, bool printToError = false);
 
-        virtual ~PipeCommand() {}
+        virtual ~PipeCommand();
 
         void execute() override;
 };
@@ -121,7 +121,8 @@ public:
 
     void execute() override;
 
-    bool isInterval(std::string interval);
+    bool isIntervalOrCommand(std::string interval);
+    bool isNegativeInterval(std::string interval);
 };
 
 class RedirectionCommand : public Command 
@@ -140,6 +141,15 @@ class RedirectionCommand : public Command
         virtual ~RedirectionCommand() {}
 
         void execute() override;
+};
+
+class ListDirCommand : public BuiltInCommand {
+public:
+    ListDirCommand(const char *cmd_line);
+
+    virtual ~ListDirCommand() {}
+
+    void execute() override;
 };
 
 
@@ -236,15 +246,6 @@ class ForegroundCommand : public BuiltInCommand {
         void execute() override;
 };
 
-class ListDirCommand : public BuiltInCommand {
-public:
-    ListDirCommand(const char *cmd_line);
-
-    virtual ~ListDirCommand() {}
-
-    void execute() override;
-};
-
 class GetUserCommand : public BuiltInCommand {
 public:
     GetUserCommand(const char *cmd_line);
@@ -289,7 +290,7 @@ private:
 public:
     std::string m_lastPwd;
     JobsList m_jobs;
-    std::vector<pair<std::string, std::string>> m_aliases_new;
+    std::vector<std::pair<std::string, std::string>> m_aliases_new;
 
     Command *CreateCommand(const char *cmd_line);
 
@@ -311,6 +312,29 @@ public:
     int getForeground();
     void setLastPwd(const char* lastPwd);
     std::string getLastPwd();
+};
+
+void checkSysCallPtr(const char* sysCall, char* currDirPtr);
+void checkSysCall(const char* sysCall, int currDir);
+
+
+#ifndef DT_DIR
+#define DT_DIR 4
+#endif
+
+#ifndef DT_REG
+#define DT_REG 8
+#endif
+
+#ifndef O_DIRECTORY
+#define O_DIRECTORY 0200000
+#endif
+
+struct linux_dirent {
+    long           d_ino;    // Inode number
+    off_t          d_off;    // Offset to next dirent
+    unsigned short d_reclen; // Length of this record
+    char           d_name[]; // Filename (null-terminated)
 };
 
 #endif //SMASH_COMMAND_H_

@@ -1,20 +1,27 @@
 #include <unistd.h>
 #include <string.h>
 #include <iostream>
+#include <algorithm>
 #include <vector>
 #include <sstream>
 #include <sys/wait.h>
 #include <pwd.h>
 #include <regex>
+#include <sys/types.h>
+#include <sys/syscall.h>
 #include <sys/stat.h>
 #include <iomanip>
 #include "Commands.h"
+#include <unistd.h>
+#include <fcntl.h>
+#include <cstring>
+
 
 using namespace std;
 
 
 const std::string WHITESPACE = " \n\r\t\f\v";
-static const     std::vector<std::string> reservedKeywords = {
+static const std::vector<std::string> reservedKeywords = {
         "quit", "lisdir", "chprompt", "showpid", "cd", "jobs", "fg", "kill", "pwd", "alias","unalias","kill",">",">>","|","getuser","watch"
     };
 
@@ -36,6 +43,7 @@ static const     std::vector<std::string> reservedKeywords = {
 #define APPEND 0X8
 #define ALLPERMISSIONS 0655
 #define FAIL -1
+#define BUF_SIZE 1000
 
 
 string _ltrim(const std::string &s) 
@@ -100,25 +108,7 @@ void _removeBackgroundSign(char *cmd_line)
 ///..................HELPER FUNCTION IMPELEMENTATIONS..................///
 
 
-void basicExternalCommand(char* firstArgValue, char** argValueArray)
-{
-  if(execvp(firstArgValue, argValueArray) == FAIL)
-  {
-    checkSysCall("execvp", FAIL);
-  }
-}
-
-void complexExternalCommand(char* cmdLine)
-{
-  char* arguments [4];
-  arguments[0] = "/bin/bash";
-  arguments[1] = "-c";
-  arguments[2] = cmdLine;
-  arguments[3] = nullptr;
-  checkSysCall("execv", execv("/bin/bash", arguments));
-}
-
-void checkSysCallPtr(char* sysCall, char* currDirPtr)
+void checkSysCallPtr(const char* sysCall, char* currDirPtr)
 {
   if (currDirPtr == nullptr)
   {
@@ -129,7 +119,7 @@ void checkSysCallPtr(char* sysCall, char* currDirPtr)
   }
 }
 
-void checkSysCall(char* sysCall, int currDir)
+void checkSysCall(const char* sysCall, int currDir)
 {
   if (currDir == -1)
   {
@@ -140,7 +130,26 @@ void checkSysCall(char* sysCall, int currDir)
   }
 }
 
-void parsePipeCommand(const string& commandString, const char** parsedPipeCommand)
+void basicExternalCommand(char* firstArgValue, char** argValueArray)
+{
+  if(execvp(firstArgValue, argValueArray) == FAIL)
+  {
+    checkSysCall("execvp", FAIL);
+  }
+}
+
+void complexExternalCommand(const char* cmdLine)
+{
+  const char* arguments [4];
+  arguments[0] = "/bin/bash";
+  arguments[1] = "-c";
+  //tmpArray = cmdLine;
+  arguments[2] = cmdLine;
+  arguments[3] = nullptr;
+  checkSysCall("execv", execv("/bin/bash", (char* const*)arguments));
+}
+
+void parsePipeCommand(const string& commandString, std::string* parsedPipeCommand)
 {
   int pipeLocation = commandString.find('|');
   parsedPipeCommand[0] = _trim(commandString.substr(0, pipeLocation)).c_str();
@@ -211,11 +220,10 @@ Command *SmallShell::CreateCommand(const char *cmd_line)
 
   if (command.find_first_of("|") != std::string::npos)
   {
-    char* parsedPipeCommand[3];
+    std::string parsedPipeCommand[3];
     std::string commandString (cmd_line);
     parsePipeCommand(commandString, parsedPipeCommand);
-    return new PipeCommand(cmd_line, (parsedPipeCommand[0]), parsedPipeCommand[2],
-                           parsedPipeCommand[1] == "|&");
+    return new PipeCommand(cmd_line, parsedPipeCommand[0], parsedPipeCommand[2], parsedPipeCommand[1] == "|&");
   }
   else if (command.find_first_of(">") != std::string::npos)
   {
@@ -344,8 +352,8 @@ JobsList::JobEntry* JobsList::getJobById(int jobId)
   {
     if(it->m_jobId == jobId)
     {
-      JobsList::JobEntry job = *it; ///////////////////////////////////////might cause mem leek
-      return &job;
+      JobsList::JobEntry* job = &(*it); ///////////////////////////////////////might cause mem leek
+      return job;
     }
   }
   return nullptr;
@@ -404,6 +412,9 @@ Command::~Command()
 ///.................BUILT IN COMMAND IMPELEMENTATIONS..................///
 
 
+BuiltInCommand::BuiltInCommand (const char *cmd_line) : Command(cmd_line) {}
+
+
 void ChpromptCommand::execute()
 {
   if (m_arg_count == 1)
@@ -415,12 +426,16 @@ void ChpromptCommand::execute()
   }
 }
 
+ShowPidCommand::ShowPidCommand(const char *cmd_line) : BuiltInCommand(cmd_line) {}
+
 void ShowPidCommand:: execute()
 {
   pid_t pid = getpid();
   std::string pidStr = std::to_string(pid);
   cout << "smash pid is " << pidStr << endl;
 }
+
+GetCurrDirCommand::GetCurrDirCommand(const char *cmd_line) : BuiltInCommand(cmd_line) {}
 
 void GetCurrDirCommand:: execute()
 {
@@ -443,7 +458,7 @@ void ChangeDirCommand:: execute()
     return;
   }
 
-  if(m_arg_values[1] == "-")
+  if(strcmp(m_arg_values[1], "-") == true)
   {
     if(SmallShell::getInstance().m_lastPwd.empty())
     {
@@ -603,6 +618,8 @@ void QuitCommand::execute()
   exit(0);
 }
 
+aliasCommand::aliasCommand(const char *cmd_line) : BuiltInCommand(cmd_line) {}
+
 bool aliasCommand::checkValidName(std::string name)
 {
 
@@ -612,7 +629,6 @@ bool aliasCommand::checkValidName(std::string name)
   }
   return false;
 }
-
 
 void aliasCommand::insertAlias(std::string name, std::string Command)
 {
@@ -651,6 +667,8 @@ void aliasCommand::execute()
   insertAlias(m_arg_values[1], m_arg_values[2]);  
 
 }
+
+unaliasCommand::unaliasCommand(const char *cmd_line) : BuiltInCommand(cmd_line) {}
 
 void unaliasCommand::execute()
 {
@@ -803,13 +821,13 @@ void GetUserCommand::execute()
   
 }
 
-PipeCommand::PipeCommand(const char* cmd_line, const char* firstCommand,
-                         const char* secondCommand, bool printToError = false):
+PipeCommand::PipeCommand(const char* cmd_line, std::string firstCommand,
+                         std::string secondCommand, bool printToError):
   Command(cmd_line),
   m_printToError(printToError)
 {
-  m_firstCommand = SmallShell::getInstance().CreateCommand(firstCommand);
-  m_secondCommand = SmallShell::getInstance().CreateCommand(secondCommand);
+  m_firstCommand = SmallShell::getInstance().CreateCommand(firstCommand.c_str());
+  m_secondCommand = SmallShell::getInstance().CreateCommand(secondCommand.c_str());
 }
 
 PipeCommand::~PipeCommand()
@@ -890,10 +908,16 @@ void PipeCommand::execute()
   }
 }
 
+bool WatchCommand::isNegativeInterval(std::string interval)
+{
+  if(interval[0] == '-' && interval.find_first_not_of("123456789") == std::string::npos)
+  {
+    return true;
+  }
+  return false;
+}
 
-
-
-bool WatchCommand::isInterval(std::string interval)
+bool WatchCommand::isIntervalOrCommand(std::string interval)
 {
   if(interval.find_first_not_of("123456789") == std::string::npos)
   {
@@ -902,17 +926,107 @@ bool WatchCommand::isInterval(std::string interval)
   return false;
 }
 
-
-
 WatchCommand::WatchCommand(const char *cmd_line): Command(cmd_line) {}
 
 void WatchCommand::execute()
 {
+  if(m_arg_count < 2)
+  {
+    std::cerr << "smash error: watch: not enough arguments" << std::endl;
+    return;
+  }
+  if(m_arg_count > 3)
+  {
+    std::cerr << "smash error: watch: too many arguments" << std::endl;
+    return;
+  }
+  if(isNegativeInterval(m_arg_values[2]))
+  {
+    std::cerr << "smash error: watch: : invalid interval" << std::endl;
+    return;
+  }
+  SmallShell &smash = SmallShell::getInstance();
+  if(!isIntervalOrCommand(m_arg_values[2])) // this is a command
+  {
+    while(true)
+    {
+      smash.executeCommand(m_arg_values[2]);
+      sleep(2);
+    }
+  
+  }
+  else // this is an interval
+  { 
+    while(true)
+    {
+    smash.executeCommand(m_arg_values[3]);
+    sleep(stoi(m_arg_values[2]));
+    }
+  }
   
 }
 
+ListDirCommand::ListDirCommand(const char *cmd_line) : BuiltInCommand(cmd_line) {}
 
+void ListDirCommand::execute()
+{
+  if(m_arg_count > 2)
+  {
+    std::cerr << "smash error: listdir: too many arguments" << std::endl;
+    return;
+  }
+  int fileDescriptor;
+  char buf[BUF_SIZE];
+  struct linux_dirent *directoryEntry;
+  int bytesPositioned;
+  char d_type;
 
+  
+  fileDescriptor = open(m_arg_count > 1 ? m_arg_values[1] : ".", O_RDONLY | O_DIRECTORY);
+    if (fileDescriptor == -1) {
+        perror("smash error: open failed");
+        return;
+    }
+   int numBytesRead;
+   std::vector<std::string> file_vector;
+    std::vector<std::string> dir_vector;
+    while(true) {
+        numBytesRead = syscall(SYS_getdents, fileDescriptor, buf, BUF_SIZE);
+        if (numBytesRead == -1) {
+            perror("smash error: getdents failed");
+            close(fileDescriptor);
+            return;
+        }
+        if (numBytesRead == 0)
+        {
+          break;
+        }
+
+    for (bytesPositioned = 0; bytesPositioned < numBytesRead;) {
+            directoryEntry = (struct linux_dirent *) (buf + bytesPositioned);
+            d_type = *(buf + bytesPositioned + directoryEntry->d_reclen - 1);
+
+            if (d_type == DT_REG){
+                file_vector.emplace_back(directoryEntry->d_name);
+            } else if(d_type == DT_DIR){
+                dir_vector.emplace_back(directoryEntry->d_name);
+            }
+
+            bytesPositioned += directoryEntry->d_reclen;
+        }
+    }
+
+    std::sort(file_vector.begin(), file_vector.end());
+    std::sort(dir_vector.begin(), dir_vector.end());
+    for(auto &_file : file_vector){
+        std::cout << "file: "<< _file << std::endl;
+    }
+    for(auto &_dir : dir_vector){
+        std::cout << "directory: "<< _dir << std::endl;
+    }
+}
+
+   
 
 
 
