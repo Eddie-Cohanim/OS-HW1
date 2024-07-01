@@ -310,7 +310,7 @@ void JobsList::addJob(int pid, char* name, bool isStopped)
   int id = 1;
   if(m_listOfJobs.empty() == false)
   {
-    id = m_listOfJobs.back().m_jobId;
+    id = m_listOfJobs.back().m_jobId +1;
   }
 
   JobEntry newJob = JobEntry(id, pid, name);
@@ -339,10 +339,10 @@ void JobsList::killAllJobs()
 {
   removeFinishedJobs();
   std::cout << "smash: sending SIGKILL signal to " << std::to_string(m_listOfJobs.size()) << " jobs:" << std::endl;//not sure this is neccesary
-  for (auto it = m_listOfJobs.begin(); it != m_listOfJobs.end();)
+  for (JobEntry job: m_listOfJobs)
   {
-    std::cout << std::to_string(it->m_jobPid) << ": " << it->m_jobName << std::endl;//ditto
-    checkSysCall("kill", kill(it->m_jobPid, SIGKILL));
+    std::cout << std::to_string(job.m_jobPid) << ": " << job.m_jobName << std::endl;//ditto
+    checkSysCall("kill", kill(job.m_jobPid, SIGKILL));
   }
 }
 
@@ -351,7 +351,8 @@ void JobsList::printJobsList()
   removeFinishedJobs();
   for (auto it = m_listOfJobs.begin(); it != m_listOfJobs.end();)
   {
-    std::cout << "[" << it->m_jobId << "]" << it->m_jobName << std::endl;
+    std::cout << "[" << it->m_jobId << "] " << it->m_jobName << std::endl;
+    ++it;
   }
 }
 
@@ -372,12 +373,16 @@ JobsList::JobEntry* JobsList::getJobById(int jobId)
 void JobsList::removeJobById(int jobId)
 {
   removeFinishedJobs();
-  for (auto it = m_listOfJobs.begin(); it != m_listOfJobs.end();)
+    for (auto it = m_listOfJobs.begin(); it != m_listOfJobs.end(); )
   {
-    if(it->m_jobId == jobId)
-    {
-      m_listOfJobs.erase(it);
-    }
+      if (it->m_jobId == jobId)
+      {
+        it = m_listOfJobs.erase(it); // Erase returns the next iterator
+      }
+      else
+      {
+        ++it; // Only increment if not erasing
+      }
   }
 }
 
@@ -578,7 +583,7 @@ KillCommand::KillCommand(const char* cmd_line, JobsList* jobs) : BuiltInCommand(
 
 void KillCommand::execute()
 { 
-  if(m_arg_count > 3)
+  if(m_arg_count != 3)
   {
     std::cerr << "smash error: kill: invalid arguments" << std::endl;
     return;
@@ -618,7 +623,6 @@ void KillCommand::execute()
    return;
   }
   pid_t jobPid = m_jobs->getJobById(myJobId)->m_jobPid;
-  
   int result = kill(jobPid, signal);
   checkSysCall("kill", result);
   if(result != FAIL)
@@ -1054,7 +1058,6 @@ void ListDirCommand::execute()
 }
 
    
-
 
 
 
