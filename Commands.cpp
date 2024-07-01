@@ -143,7 +143,6 @@ void complexExternalCommand(const char* cmdLine)
   const char* arguments [4];
   arguments[0] = "/bin/bash";
   arguments[1] = "-c";
-  //tmpArray = cmdLine;
   arguments[2] = cmdLine;
   arguments[3] = nullptr;
   checkSysCall("execv", execv("/bin/bash", (char* const*)arguments));
@@ -272,7 +271,7 @@ Command *SmallShell::CreateCommand(const char *cmd_line)
   else if (firstWord.compare("unalias") == 0)
   {
     return new unaliasCommand(cmd_line);
-  }  
+  } 
   else
   {
     return new ExternalCommand(cmd_line);
@@ -476,32 +475,35 @@ void ChangeDirCommand:: execute()
     std::cerr << "smash error: cd: too many arguments" << std::endl;
     return;
   }
-
-  if(strcmp(m_arg_values[1], "-") == true)
+  if(strcmp(m_arg_values[1], "-") == false)
   {
     if(SmallShell::getInstance().m_lastPwd.empty())
     {
       std::cerr << "smash error: cd: OLDPWD not set" << std::endl;
       return;
     }
+
     char* lastDir = new char[ADRRESS_MAX_LENGTH];
-    checkSysCallPtr("cd:", getcwd(lastDir, sizeof(char) * ADRRESS_MAX_LENGTH));
+    checkSysCallPtr("chdir", getcwd(lastDir, sizeof(char) * ADRRESS_MAX_LENGTH));
     int result = chdir(SmallShell::getInstance().m_lastPwd.c_str());
-    checkSysCall("cd:", result);
+    checkSysCall("chdir", result);
     if(result != FAIL)
     {
       SmallShell::getInstance().setLastPwd(lastDir);
     }
   }
-  
+  else
+  {
   char* lastDir = new char[ADRRESS_MAX_LENGTH];
-  checkSysCallPtr("cd:", getcwd(lastDir, sizeof(char) * ADRRESS_MAX_LENGTH));
+  checkSysCallPtr("chdir", getcwd(lastDir, sizeof(char) * ADRRESS_MAX_LENGTH));
   int result = chdir(m_arg_values[1]);
-  checkSysCall("cd:", result);
+  checkSysCall("chdir", result);
   if(result != FAIL)
   {
     SmallShell::getInstance().setLastPwd(lastDir);
   }
+  }
+
 }
 
 JobsCommand::JobsCommand(const char* cmd_line, JobsList* jobs) : BuiltInCommand(cmd_line)
