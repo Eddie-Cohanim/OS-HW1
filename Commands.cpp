@@ -428,7 +428,6 @@ Command::~Command()
 
 ///.................BUILT IN COMMAND IMPELEMENTATIONS..................///
 
-////////
 
 BuiltInCommand::BuiltInCommand (const char *cmd_line) : Command(cmd_line) {}
 
@@ -441,7 +440,8 @@ void ChpromptCommand::execute()
     SmallShell::getInstance().setPrompt("smash");
   }
   else{
-    SmallShell::getInstance().setPrompt(m_arg_values[1]);
+
+    SmallShell::getInstance().setPrompt((m_arg_values[1]));
   }
 }
 
