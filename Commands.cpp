@@ -214,6 +214,7 @@ SmallShell::~SmallShell()
 */
 Command *SmallShell::CreateCommand(const char *cmd_line) 
 {
+  std::cout << "create command has been entered" << std::endl;
   string command = _trim(string(cmd_line));
   string firstWord = command.substr(0, command.find_first_of(" \n"));
 
@@ -280,11 +281,12 @@ Command *SmallShell::CreateCommand(const char *cmd_line)
   return nullptr;
 }
 
-void SmallShell::executeCommand(const char *cmd_line)
+void SmallShell::executeCommand(std::string cmd_line)
 {
-  Command* command = CreateCommand(cmd_line);
-  command->execute();
-  delete command;
+  std::cout << "execute command has been entered" << std::endl;
+  //Command* command = CreateCommand(cmd_line);
+  //command->execute();
+  //delete command;
 }
 
 
@@ -334,6 +336,7 @@ void JobsList::killAllJobs()
   std::cout << "smash: sending SIGKILL signal to " << std::to_string(m_listOfJobs.size()) << " jobs:" << std::endl;//not sure this is neccesary
   for (auto it = m_listOfJobs.begin(); it != m_listOfJobs.end();)
   {
+    std::cout << "kill all jobs command was reached" << std::endl;
     std::cout << std::to_string(it->m_jobPid) << ": " << it->m_jobName << std::endl;//ditto
     checkSysCall("kill", kill(it->m_jobPid, SIGKILL));
   }
@@ -735,6 +738,8 @@ ExternalCommand::ExternalCommand(const char* cmd_line) : Command(cmd_line)
 
 void ExternalCommand::execute()
 {
+  std::cout << "external command has been entered" << std::endl;
+
   pid_t sonPid = fork();
   checkSysCall("fork", sonPid);
   if(sonPid == 0)//we are the son
