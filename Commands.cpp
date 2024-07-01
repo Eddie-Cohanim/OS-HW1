@@ -143,6 +143,7 @@ void complexExternalCommand(const char* cmdLine)
   const char* arguments [4];
   arguments[0] = "/bin/bash";
   arguments[1] = "-c";
+  //tmpArray = cmdLine;
   arguments[2] = cmdLine;
   arguments[3] = nullptr;
   checkSysCall("execv", execv("/bin/bash", (char* const*)arguments));
@@ -217,6 +218,9 @@ Command *SmallShell::CreateCommand(const char *cmd_line)
   string command = _trim(string(cmd_line));
   string firstWord = command.substr(0, command.find_first_of(" \n"));
 
+  if (firstWord.empty()) {
+        return nullptr;
+  }
   if (command.find_first_of("|") != std::string::npos)
   {
     std::string parsedPipeCommand[3];
@@ -271,7 +275,7 @@ Command *SmallShell::CreateCommand(const char *cmd_line)
   else if (firstWord.compare("unalias") == 0)
   {
     return new unaliasCommand(cmd_line);
-  } 
+  }  
   else
   {
     return new ExternalCommand(cmd_line);
@@ -283,6 +287,9 @@ Command *SmallShell::CreateCommand(const char *cmd_line)
 void SmallShell::executeCommand(const char *cmd_line)
 {
   Command* command = CreateCommand(cmd_line);
+  if (command == nullptr) {
+        return;
+  }
   command->execute();
   delete command;
 }
@@ -475,6 +482,7 @@ void ChangeDirCommand:: execute()
     std::cerr << "smash error: cd: too many arguments" << std::endl;
     return;
   }
+
   if(strcmp(m_arg_values[1], "-") == false)
   {
     if(SmallShell::getInstance().m_lastPwd.empty())
@@ -482,9 +490,8 @@ void ChangeDirCommand:: execute()
       std::cerr << "smash error: cd: OLDPWD not set" << std::endl;
       return;
     }
-
     char* lastDir = new char[ADRRESS_MAX_LENGTH];
-    checkSysCallPtr("chdir", getcwd(lastDir, sizeof(char) * ADRRESS_MAX_LENGTH));
+    checkSysCallPtr("cwd", getcwd(lastDir, sizeof(char) * ADRRESS_MAX_LENGTH));
     int result = chdir(SmallShell::getInstance().m_lastPwd.c_str());
     checkSysCall("chdir", result);
     if(result != FAIL)
@@ -492,10 +499,9 @@ void ChangeDirCommand:: execute()
       SmallShell::getInstance().setLastPwd(lastDir);
     }
   }
-  else
-  {
-  char* lastDir = new char[ADRRESS_MAX_LENGTH];
-  checkSysCallPtr("chdir", getcwd(lastDir, sizeof(char) * ADRRESS_MAX_LENGTH));
+  else{
+     char* lastDir = new char[ADRRESS_MAX_LENGTH];
+  checkSysCallPtr("cwd", getcwd(lastDir, sizeof(char) * ADRRESS_MAX_LENGTH));
   int result = chdir(m_arg_values[1]);
   checkSysCall("chdir", result);
   if(result != FAIL)
@@ -503,7 +509,7 @@ void ChangeDirCommand:: execute()
     SmallShell::getInstance().setLastPwd(lastDir);
   }
   }
-
+ 
 }
 
 JobsCommand::JobsCommand(const char* cmd_line, JobsList* jobs) : BuiltInCommand(cmd_line)
