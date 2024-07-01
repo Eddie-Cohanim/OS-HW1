@@ -233,6 +233,10 @@ Command *SmallShell::CreateCommand(const char *cmd_line)
   {
       return new RedirectionCommand(cmd_line);
   }
+  else if (firstWord.compare("chprompt") == 0)
+  {
+    return new ChpromptCommand(cmd_line);
+  }
   else if (firstWord.compare("pwd") == 0)
   {
     return new GetCurrDirCommand(cmd_line);
@@ -382,9 +386,8 @@ JobsList::JobEntry* JobsList::getLastJob(int* lastJobId)
   return &m_listOfJobs.back();
 }
 
-
-void JobsList::JobEntry::killJob() const {
-    if (kill(_jobPid, SIGKILL) == -1) {
+void JobsList::JobEntry::killJob(){
+    if (kill(m_jobPid, SIGKILL) == -1) {
         perror("smash error: kill failed");
     }
 }

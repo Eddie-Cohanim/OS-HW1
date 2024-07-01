@@ -59,19 +59,22 @@ class JobsList
     public:
         class JobEntry 
         {
+            friend class JobsList;
+
             public:
                 int m_jobId;
                 pid_t m_jobPid;
                 std::string m_jobName;
                 JobEntry(int id, int pid, char* name, bool isStopped);
                 bool m_isStopped;
+                void killJob();
         };
         
         std::vector<JobEntry> m_listOfJobs;
     
         JobsList() = default;
 
-        ~JobsList() = default;
+        ~JobsList();
 
         void addJob(int pid, char* name, bool isStopped = false);
 
