@@ -11,10 +11,10 @@
 #include <sys/syscall.h>
 #include <sys/stat.h>
 #include <iomanip>
-#include "Commands.h"
 #include <unistd.h>
 #include <fcntl.h>
 #include <cstring>
+#include "Commands.h"
 
 
 using namespace std;
@@ -36,11 +36,6 @@ static const std::vector<std::string> reservedKeywords = {
 #define FUNC_EXIT()
 #endif
 
-#define WRITEONLY 1 
-#define CREATE 0X100
-#define TRUNCATE 0X200
-#define READWRITE 2
-#define APPEND 0X8
 #define ALLPERMISSIONS 0666
 #define FAIL -1
 #define BUF_SIZE 1000
@@ -166,7 +161,25 @@ void parsePipeCommand(const string& commandString, std::string* parsedPipeComman
   }
 }
 
+void ForegroundHelper(int jobId)
+{
+  //SmallShell &smash = SmallShell::getInstance();
+
+  if(SmallShell::getInstance().m_jobs.getJobById(jobId) == nullptr)
+  {
+    std::cerr << "smash error: fg: job-id " << jobId << " does not exist" << std::endl;
+    return;
+  }
+  SmallShell::getInstance().setForeground(jobId);
+  std::cout << SmallShell::getInstance().m_jobs.getJobById(jobId)->m_jobName << " " << std::to_string(jobId) << std::endl; 
+  std::cerr << "this is where the waitpid failed" << std::endl;
+  checkSysCall("waitpid", waitpid(SmallShell::getInstance().m_jobs.getJobById(jobId)->m_jobPid, nullptr, 0));
+  SmallShell::getInstance().m_jobs.removeJobById(jobId);
+}
+
+
 ///........................SHELL IMPLEMENTATION........................///
+
 
 void SmallShell::setForeground(int foregroundId)
 {
@@ -210,9 +223,6 @@ SmallShell::~SmallShell()
 // TODO: add your implementation
 }
 
-/**
-* Creates and returns a pointer to Command class which matches the given command line (cmd_line)
-*/
 Command *SmallShell::CreateCommand(const char *cmd_line) 
 {
   string command = _trim(string(cmd_line));
@@ -290,7 +300,7 @@ void SmallShell::executeCommand(const char *cmd_line)
   Command* command = CreateCommand(cmd_line);
   if (command == nullptr) 
   {
-        return;
+    return;
   }
   command->execute();
   delete command;
@@ -369,6 +379,21 @@ JobsList::JobEntry* JobsList::getJobById(int jobId)
     }
   }
   return nullptr;
+}
+
+JobsList::JobEntry* JobsList::getMaxJobId()
+{
+  removeFinishedJobs();
+  int currentMax = 0;
+  JobsList::JobEntry* job;
+  for (auto it = m_listOfJobs.begin(); it != m_listOfJobs.end(); ++it)
+  {
+    if(it->m_jobId >= currentMax)
+    {
+      job = &(*it); 
+    }
+  }
+  return job;
 }
 
 void JobsList::removeJobById(int jobId)
@@ -452,8 +477,8 @@ void ChpromptCommand::execute()
   {
     SmallShell::getInstance().setPrompt("smash");
   }
-  else{
-
+  else
+  {
     SmallShell::getInstance().setPrompt((m_arg_values[1]));
   }
 }
@@ -530,15 +555,15 @@ void JobsCommand:: execute()
   SmallShell::getInstance().m_jobs.printJobsList();
 }
 
-ForegroundCommand::ForegroundCommand(const char* cmd_line, JobsList* jobs) : BuiltInCommand(cmd_line)
+ForegroundCommand::ForegroundCommand(const char* cmd_line, JobsList* jobs) : BuiltInCommand(cmd_line) , m_jobs(jobs)
 {
-  m_jobs = jobs;
 }
 
 void ForegroundCommand:: execute()
 {
   if(m_arg_count == 1)
   {
+    
     if(SmallShell::getInstance().m_jobs.m_listOfJobs.empty())
     {
       std::cerr << "smash error: fg: job list is empty" << std::endl;
@@ -546,7 +571,8 @@ void ForegroundCommand:: execute()
     }
     else
     {
-      std::cerr << "smash error: fg: invalid arguments" << std::endl;
+      int jobId = SmallShell::getInstance().m_jobs.getMaxJobId()->m_jobId;
+      ForegroundHelper(jobId);
       return;
     }
   }
@@ -559,19 +585,13 @@ void ForegroundCommand:: execute()
     
   try
   {
-    int myJob = std::stoi(m_arg_values[2]);
-    pid_t jobPid = SmallShell::getInstance().m_jobs.getJobById(myJob)->m_jobPid;
-    if(SmallShell::getInstance().m_jobs.getJobById(myJob) == nullptr)
-    {
-      std::cerr << "smash error: fg: job-id " << myJob << " does not exist" << std::endl;
-      return;
-    }
-    SmallShell::getInstance().setForeground(myJob);
-    std::cout << myJob << " " << std::to_string(jobPid) << std::endl; 
-    checkSysCall("waitpid", waitpid(jobPid, nullptr, 0));
-    SmallShell::getInstance().m_jobs.removeJobById(myJob);
+
+    int jobId = std::stoi(m_arg_values[1]);
+    
+    ForegroundHelper(jobId);
+    return;
   }
-  catch(std::exception &e)
+    catch(std::exception &e)
   {
     std::cerr << "smash error: fg: invalid arguments" << std::endl;
     return;
@@ -612,6 +632,25 @@ void KillCommand::execute()
   try
   {
     myJobId = std::stoi(m_arg_values[2]);
+    if(myJobId < 0)
+    {
+      std::cerr << "smash error: kill: invalid arguments" << std::endl;
+      return;
+    }
+  if(m_jobs->getJobById(myJobId) == nullptr)
+  {
+   std::cerr << "smash error: kill: job-id " << std::to_string(myJobId) << " does not exist" << std::endl;
+   return;
+  }
+    pid_t jobPid = m_jobs->getJobById(myJobId)->m_jobPid;
+    int result = kill(jobPid, signal);
+    checkSysCall("kill", result);
+    if(signal == SIGKILL)
+    {
+      m_jobs->removeJobById(myJobId);
+    }
+    std::cout << "signal number " << std::to_string(signal) << " was sent to pid " << std::to_string(jobPid) << std::endl;
+
   } 
   catch (const std::exception& e)
   {
@@ -619,18 +658,9 @@ void KillCommand::execute()
     return;
   }
 
-  if(m_jobs->getJobById(myJobId) == nullptr)
-  {
-   std::cerr << "smash error: kill: job-id " << std::to_string(myJobId) << " does not exist" << std::endl;
-   return;
-  }
-  pid_t jobPid = m_jobs->getJobById(myJobId)->m_jobPid;
-  int result = kill(jobPid, signal);
-  checkSysCall("kill", result);
-  if(result != FAIL)
-  {
-    std::cout << "signal number " << std::to_string(signal) << " was sent to pid " << std::to_string(jobPid) << std::endl;
-  }
+ 
+  
+  
 }
 
 QuitCommand::QuitCommand(const char* cmd_line, JobsList* jobs) : BuiltInCommand(cmd_line)
@@ -665,7 +695,7 @@ bool aliasCommand::checkValidName(std::string name)
 
 void aliasCommand::insertAlias(std::string name, std::string Command)
 {
-  SmallShell &smash = SmallShell::getInstance();
+  SmallShell &smash = SmallShell::getInstance();//think this is wrong
   smash.m_aliases_new.push_back({name, Command});
 }
 
@@ -1021,37 +1051,41 @@ void ListDirCommand::execute()
 
   
   fileDescriptor = open(m_arg_count > 1 ? m_arg_values[1] : ".", O_RDONLY | O_DIRECTORY);
-    if (fileDescriptor == -1) {
-        perror("smash error: open failed");
-        return;
+    if (fileDescriptor == -1) 
+    {
+      perror("smash error: open failed");
+      return;
     }
-   int numBytesRead;
-   std::vector<std::string> file_vector;
+    int numBytesRead;
+    std::vector<std::string> file_vector;
     std::vector<std::string> dir_vector;
-    while(true) {
-        numBytesRead = syscall(SYS_getdents, fileDescriptor, buf, BUF_SIZE);
-        if (numBytesRead == -1) {
-            perror("smash error: getdents failed");
-            close(fileDescriptor);
-            return;
-        }
-        if (numBytesRead == 0)
-        {
-          break;
+    while(true) 
+    {
+      numBytesRead = syscall(SYS_getdents, fileDescriptor, buf, BUF_SIZE);
+      if (numBytesRead == -1) 
+      {
+        perror("smash error: getdents failed");
+        close(fileDescriptor);
+        return;
+      }
+      if (numBytesRead == 0)
+      {
+        break;
+      }
+
+      for (bytesPositioned = 0; bytesPositioned < numBytesRead;) 
+      {
+        directoryEntry = (struct linux_dirent *) (buf + bytesPositioned);
+        d_type = *(buf + bytesPositioned + directoryEntry->d_reclen - 1);
+
+        if (d_type == DT_REG){
+          file_vector.emplace_back(directoryEntry->d_name);
+        } else if(d_type == DT_DIR){
+          dir_vector.emplace_back(directoryEntry->d_name);
         }
 
-    for (bytesPositioned = 0; bytesPositioned < numBytesRead;) {
-            directoryEntry = (struct linux_dirent *) (buf + bytesPositioned);
-            d_type = *(buf + bytesPositioned + directoryEntry->d_reclen - 1);
-
-            if (d_type == DT_REG){
-                file_vector.emplace_back(directoryEntry->d_name);
-            } else if(d_type == DT_DIR){
-                dir_vector.emplace_back(directoryEntry->d_name);
-            }
-
-            bytesPositioned += directoryEntry->d_reclen;
-        }
+        bytesPositioned += directoryEntry->d_reclen;
+      }
     }
 
     std::sort(file_vector.begin(), file_vector.end());

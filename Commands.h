@@ -5,6 +5,7 @@
 #include <map>
 #include <iostream>
 
+
 #define COMMAND_MAX_LENGTH (200)
 #define COMMAND_MAX_ARGS (20)
 #define ADRRESS_MAX_LENGTH (1000)
@@ -85,6 +86,8 @@ class JobsList
         void removeFinishedJobs();
 
         JobEntry *getJobById(int jobId);
+
+        JobEntry* getMaxJobId();
 
         void removeJobById(int jobId);
 
