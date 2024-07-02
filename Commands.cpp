@@ -11,10 +11,10 @@
 #include <sys/syscall.h>
 #include <sys/stat.h>
 #include <iomanip>
-#include "Commands.h"
 #include <unistd.h>
 #include <fcntl.h>
 #include <cstring>
+#include "Commands.h"
 
 
 using namespace std;
@@ -41,7 +41,7 @@ static const std::vector<std::string> reservedKeywords = {
 #define TRUNCATE 0X200
 #define READWRITE 2
 #define APPEND 0X8
-#define ALLPERMISSIONS 0655
+#define ALLPERMISSIONS 0666
 #define FAIL -1
 #define BUF_SIZE 1000
 
@@ -217,11 +217,11 @@ Command *SmallShell::CreateCommand(const char *cmd_line)
 {
   string command = _trim(string(cmd_line));
   string firstWord = command.substr(0, command.find_first_of(" \n"));
-
-  if (firstWord.empty()) {
+  if (firstWord.empty()) 
+  {
         return nullptr;
   }
-  if (command.find_first_of("|") != std::string::npos)
+  if (command.find_first_of("|") != std::string::npos)// pipe command
   {
     std::string parsedPipeCommand[3];
     std::string commandString (cmd_line);
@@ -278,6 +278,7 @@ Command *SmallShell::CreateCommand(const char *cmd_line)
   }  
   else
   {
+    
     return new ExternalCommand(cmd_line);
   }
 
@@ -287,7 +288,8 @@ Command *SmallShell::CreateCommand(const char *cmd_line)
 void SmallShell::executeCommand(const char *cmd_line)
 {
   Command* command = CreateCommand(cmd_line);
-  if (command == nullptr) {
+  if (command == nullptr) 
+  {
         return;
   }
   command->execute();
@@ -326,7 +328,7 @@ void JobsList::removeFinishedJobs()
     checkSysCall("waitpid", result);
     if (result != 0)
     {
-      it = m_listOfJobs.erase(it);
+      it = m_listOfJobs.erase(it); //Erase returns the next iterator
     }
     else
     {
@@ -349,17 +351,16 @@ void JobsList::killAllJobs()
 void JobsList::printJobsList()
 {
   removeFinishedJobs();
-  for (auto it = m_listOfJobs.begin(); it != m_listOfJobs.end();)
+  for (auto it = m_listOfJobs.begin(); it != m_listOfJobs.end(); ++it)
   {
-    std::cout << "[" << it->m_jobId << "] " << it->m_jobName << std::endl;
-    ++it;
+    std::cout << "[" << it->m_jobId << "] " << it->m_jobName << std::endl;  
   }
 }
 
 JobsList::JobEntry* JobsList::getJobById(int jobId)
 {
   removeFinishedJobs();
-  for (auto it = m_listOfJobs.begin(); it != m_listOfJobs.end();)
+  for (auto it = m_listOfJobs.begin(); it != m_listOfJobs.end(); ++it)
   {
     if(it->m_jobId == jobId)
     {
@@ -377,7 +378,8 @@ void JobsList::removeJobById(int jobId)
   {
       if (it->m_jobId == jobId)
       {
-        it = m_listOfJobs.erase(it); // Erase returns the next iterator
+        it = m_listOfJobs.erase(it); //Erase returns the next iterator
+        break;
       }
       else
       {
@@ -528,15 +530,16 @@ void JobsCommand:: execute()
   SmallShell::getInstance().m_jobs.printJobsList();
 }
 
-ForegroundCommand::ForegroundCommand(const char* cmd_line, JobsList* jobs) : BuiltInCommand(cmd_line)
+ForegroundCommand::ForegroundCommand(const char* cmd_line, JobsList* jobs) : BuiltInCommand(cmd_line) , m_jobs(jobs)
 {
-  m_jobs = jobs;
 }
 
 void ForegroundCommand:: execute()
 {
+
   if(m_arg_count == 1)
   {
+    
     if(SmallShell::getInstance().m_jobs.m_listOfJobs.empty())
     {
       std::cerr << "smash error: fg: job list is empty" << std::endl;
@@ -557,16 +560,23 @@ void ForegroundCommand:: execute()
     
   try
   {
-    int myJob = std::stoi(m_arg_values[2]);
-    pid_t jobPid = SmallShell::getInstance().m_jobs.getJobById(myJob)->m_jobPid;
-    if(SmallShell::getInstance().m_jobs.getJobById(myJob) == nullptr)
+
+    int myJob = std::stoi(m_arg_values[1]);
+    std::cout << "wtf is: " << std::string(m_arg_values[1]) << std::endl;
+
+    SmallShell &smash = SmallShell::getInstance();
+    // pid_t jobPid = smash.m_jobs.getJobById(myJob)->m_jobPid;
+
+    // std::cout << "wtf is: " << std::to_string(jobPid) << std::endl;
+
+    if(smash.m_jobs.getJobById(myJob) == nullptr)
     {
       std::cerr << "smash error: fg: job-id " << myJob << " does not exist" << std::endl;
       return;
     }
-    SmallShell::getInstance().setForeground(myJob);
-    std::cout << myJob << " " << std::to_string(jobPid) << std::endl; 
-    checkSysCall("waitpid", waitpid(jobPid, nullptr, 0));
+    smash.setForeground(myJob);
+    std::cout << smash.m_jobs.getJobById(myJob)->m_jobName << " " << std::to_string(myJob) << std::endl; 
+    checkSysCall("waitpid", waitpid(smash.m_jobs.getJobById(myJob)->m_jobPid, nullptr, 0));
     SmallShell::getInstance().m_jobs.removeJobById(myJob);
   }
   catch(std::exception &e)
@@ -610,6 +620,25 @@ void KillCommand::execute()
   try
   {
     myJobId = std::stoi(m_arg_values[2]);
+    if(myJobId < 0)
+    {
+      std::cerr << "smash error: kill: invalid arguments" << std::endl;
+      return;
+    }
+  if(m_jobs->getJobById(myJobId) == nullptr)
+  {
+   std::cerr << "smash error: kill: job-id " << std::to_string(myJobId) << " does not exist" << std::endl;
+   return;
+  }
+    pid_t jobPid = m_jobs->getJobById(myJobId)->m_jobPid;
+    int result = kill(jobPid, signal);
+    checkSysCall("kill", result);
+    if(signal == SIGKILL)
+    {
+      m_jobs->removeJobById(myJobId);
+    }
+    std::cout << "signal number " << std::to_string(signal) << " was sent to pid " << std::to_string(jobPid) << std::endl;
+
   } 
   catch (const std::exception& e)
   {
@@ -617,18 +646,9 @@ void KillCommand::execute()
     return;
   }
 
-  if(m_jobs->getJobById(myJobId) == nullptr)
-  {
-   std::cerr << "smash error: kill: job-id " << std::to_string(myJobId) << " does not exist" << std::endl;
-   return;
-  }
-  pid_t jobPid = m_jobs->getJobById(myJobId)->m_jobPid;
-  int result = kill(jobPid, signal);
-  checkSysCall("kill", result);
-  if(result != FAIL)
-  {
-    std::cout << "signal number " << std::to_string(signal) << " was sent to pid " << std::to_string(jobPid) << std::endl;
-  }
+ 
+  
+  
 }
 
 QuitCommand::QuitCommand(const char* cmd_line, JobsList* jobs) : BuiltInCommand(cmd_line)
@@ -792,13 +812,21 @@ RedirectionCommand::RedirectionCommand(const char* cmd_line) : Command(cmd_line)
 
   if('>' == trimmedCmdLine[arrowLocation + 1])
   {
-    //arrowLocation++; only relevent if we change the way we find the out path
+    //arrowLocation++; 
     m_append = true;
   }
+  int i;
+  for(i = 0; i < COMMAND_MAX_ARGS; i++)
+  {
+    std::string commandString = _trim(m_arg_values[i]);
+    if(commandString.front() == '>')
+    {
+      i++;
+      break;
+    }
+  }
+  m_outPath =  m_arg_values[i]; 
 
-  m_outPath =  m_arg_values[3];  //_trim(std::string(m_arg_values[3]));
-  //should be the path, if not then we can trim the line further and
-  // use that instead and have outpath be a string
 }
 
 void RedirectionCommand::execute()
@@ -806,25 +834,22 @@ void RedirectionCommand::execute()
   int newPathFileDiscriptor;
   if(m_append == true)
   {
-    checkSysCall("open", newPathFileDiscriptor = open(m_outPath, CREATE | READWRITE | APPEND, ALLPERMISSIONS ));
+    newPathFileDiscriptor = open(m_outPath, O_RDWR | O_CREAT | O_APPEND, ALLPERMISSIONS);
+    checkSysCall("open", newPathFileDiscriptor);
   }
   else
   {
-    checkSysCall("open", newPathFileDiscriptor = open(m_outPath, WRITEONLY | CREATE | TRUNCATE , ALLPERMISSIONS));
-  }
-
-  if(newPathFileDiscriptor == FAIL)
-  {
-    std::cerr << "smash error: open failed" << std::endl;
-    return; 
+    newPathFileDiscriptor = open(m_outPath, O_WRONLY | O_CREAT | O_TRUNC , ALLPERMISSIONS);
+    checkSysCall("open", newPathFileDiscriptor);
   }
 
   int oldPathFileDiscriptor = dup(1); // 1 --> output stream of the process
   dup2(newPathFileDiscriptor, 1);
-  m_commandToExecute = SmallShell::getInstance().CreateCommand(m_commandLine.c_str());
-  m_commandToExecute->execute();
+  SmallShell::getInstance().executeCommand(m_commandLine.c_str());
+
   dup2(oldPathFileDiscriptor, 1);
-  checkSysCall("close", close(newPathFileDiscriptor));
+  int closeFileResult = close(newPathFileDiscriptor);
+  checkSysCall("close", closeFileResult);
 }
 
 GetUserCommand::GetUserCommand(const char *cmd_line) : BuiltInCommand(cmd_line) {}
@@ -1058,6 +1083,3 @@ void ListDirCommand::execute()
 }
 
    
-
-
-

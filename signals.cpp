@@ -15,7 +15,8 @@ if (foregroundId != -1) {
     checkSysCall("kill", result);
     std::cout << "smash: process " << foregroundId << " was killed"<< std::endl;
     smash.setForeground(-1);
-}
 
+}
+    
 
 }
