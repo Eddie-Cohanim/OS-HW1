@@ -308,7 +308,7 @@ public:
 
     ~SmallShell();
 
-    void executeCommand(std::string cmd_line);
+    void executeCommand(const char *cmd_line);
     void setPrompt(const char *newPrompt);
     std::string getPrompt() const; 
     void setForeground(int foregroundId);
