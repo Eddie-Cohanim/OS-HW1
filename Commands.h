@@ -87,6 +87,8 @@ class JobsList
 
         JobEntry *getJobById(int jobId);
 
+        JobEntry* getMaxJobId();
+
         void removeJobById(int jobId);
 
         JobEntry *getLastJob(int *lastJobId);

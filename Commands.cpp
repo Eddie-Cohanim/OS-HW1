@@ -36,11 +36,6 @@ static const std::vector<std::string> reservedKeywords = {
 #define FUNC_EXIT()
 #endif
 
-#define WRITEONLY 1 
-#define CREATE 0X100
-#define TRUNCATE 0X200
-#define READWRITE 2
-#define APPEND 0X8
 #define ALLPERMISSIONS 0666
 #define FAIL -1
 #define BUF_SIZE 1000
@@ -125,7 +120,7 @@ void checkSysCall(const char* sysCall, int currDir)
   {
     std::string tmp = "smash error: "; 
     tmp += sysCall;                  
-    tmp += " failed";                  
+    tmp += " failed";   
     perror(tmp.c_str()); //???????????
   }
 }
@@ -166,7 +161,25 @@ void parsePipeCommand(const string& commandString, std::string* parsedPipeComman
   }
 }
 
+void ForegroundHelper(int jobId)
+{
+  //SmallShell &smash = SmallShell::getInstance();
+
+  if(SmallShell::getInstance().m_jobs.getJobById(jobId) == nullptr)
+  {
+    std::cerr << "smash error: fg: job-id " << jobId << " does not exist" << std::endl;
+    return;
+  }
+  SmallShell::getInstance().setForeground(jobId);
+  std::cout << SmallShell::getInstance().m_jobs.getJobById(jobId)->m_jobName << " " << std::to_string(jobId) << std::endl; 
+  checkSysCall("waitpid", waitpid(SmallShell::getInstance().m_jobs.getJobById(jobId)->m_jobPid, nullptr, WUNTRACED));
+
+  SmallShell::getInstance().m_jobs.removeJobById(jobId);
+}
+
+
 ///........................SHELL IMPLEMENTATION........................///
+
 
 void SmallShell::setForeground(int foregroundId)
 {
@@ -210,9 +223,6 @@ SmallShell::~SmallShell()
 // TODO: add your implementation
 }
 
-/**
-* Creates and returns a pointer to Command class which matches the given command line (cmd_line)
-*/
 Command *SmallShell::CreateCommand(const char *cmd_line) 
 {
   string command = _trim(string(cmd_line));
@@ -290,7 +300,7 @@ void SmallShell::executeCommand(const char *cmd_line)
   Command* command = CreateCommand(cmd_line);
   if (command == nullptr) 
   {
-        return;
+    return;
   }
   command->execute();
   delete command;
@@ -325,7 +335,7 @@ void JobsList::removeFinishedJobs()
   {
     int status;
     int result = waitpid(it->m_jobPid, &status, WNOHANG);
-    checkSysCall("waitpid", result);
+    // checkSysCall("waitpid - remove finished job", result);
     if (result != 0)
     {
       it = m_listOfJobs.erase(it); //Erase returns the next iterator
@@ -335,6 +345,9 @@ void JobsList::removeFinishedJobs()
       ++it;
     }
   }
+
+
+  
 }
 
 void JobsList::killAllJobs()
@@ -371,9 +384,24 @@ JobsList::JobEntry* JobsList::getJobById(int jobId)
   return nullptr;
 }
 
-void JobsList::removeJobById(int jobId)
+JobsList::JobEntry* JobsList::getMaxJobId()
 {
   removeFinishedJobs();
+  int currentMax = 0;
+  JobsList::JobEntry* job;
+  for (auto it = m_listOfJobs.begin(); it != m_listOfJobs.end(); ++it)
+  {
+    if(it->m_jobId >= currentMax)
+    {
+      job = &(*it); 
+    }
+  }
+  return job;
+}
+
+void JobsList::removeJobById(int jobId)
+{
+  //removeFinishedJobs();
     for (auto it = m_listOfJobs.begin(); it != m_listOfJobs.end(); )
   {
       if (it->m_jobId == jobId)
@@ -452,8 +480,8 @@ void ChpromptCommand::execute()
   {
     SmallShell::getInstance().setPrompt("smash");
   }
-  else{
-
+  else
+  {
     SmallShell::getInstance().setPrompt((m_arg_values[1]));
   }
 }
@@ -536,18 +564,18 @@ ForegroundCommand::ForegroundCommand(const char* cmd_line, JobsList* jobs) : Bui
 
 void ForegroundCommand:: execute()
 {
-
   if(m_arg_count == 1)
   {
     
     if(SmallShell::getInstance().m_jobs.m_listOfJobs.empty())
     {
-      std::cerr << "smash error: fg: job list is empty" << std::endl;
+      std::cerr << "smash error: fg: jobs list is empty" << std::endl;
       return;
     }
     else
     {
-      std::cerr << "smash error: fg: invalid arguments" << std::endl;
+      int jobId = SmallShell::getInstance().m_jobs.getMaxJobId()->m_jobId;
+      ForegroundHelper(jobId);
       return;
     }
   }
@@ -561,25 +589,16 @@ void ForegroundCommand:: execute()
   try
   {
 
-    int myJob = std::stoi(m_arg_values[1]);
-    std::cout << "wtf is: " << std::string(m_arg_values[1]) << std::endl;
-
-    SmallShell &smash = SmallShell::getInstance();
-    // pid_t jobPid = smash.m_jobs.getJobById(myJob)->m_jobPid;
-
-    // std::cout << "wtf is: " << std::to_string(jobPid) << std::endl;
-
-    if(smash.m_jobs.getJobById(myJob) == nullptr)
+    int jobId = std::stoi(m_arg_values[1]);
+    if(jobId < 0)
     {
-      std::cerr << "smash error: fg: job-id " << myJob << " does not exist" << std::endl;
+      std::cerr << "smash error: fg: invalid arguments" << std::endl;
       return;
     }
-    smash.setForeground(myJob);
-    std::cout << smash.m_jobs.getJobById(myJob)->m_jobName << " " << std::to_string(myJob) << std::endl; 
-    checkSysCall("waitpid", waitpid(smash.m_jobs.getJobById(myJob)->m_jobPid, nullptr, 0));
-    SmallShell::getInstance().m_jobs.removeJobById(myJob);
+    ForegroundHelper(jobId);
+    return;
   }
-  catch(std::exception &e)
+    catch(std::exception &e)
   {
     std::cerr << "smash error: fg: invalid arguments" << std::endl;
     return;
@@ -683,7 +702,7 @@ bool aliasCommand::checkValidName(std::string name)
 
 void aliasCommand::insertAlias(std::string name, std::string Command)
 {
-  SmallShell &smash = SmallShell::getInstance();
+  SmallShell &smash = SmallShell::getInstance();//think this is wrong
   smash.m_aliases_new.push_back({name, Command});
 }
 
@@ -755,7 +774,7 @@ ExternalCommand::ExternalCommand(const char* cmd_line) : Command(cmd_line)
   for(int i = 0; i < m_arg_count; i++)
   {
     std::string argument = std::string(m_arg_values[i]);
-    if(argument.find('?') == std::string::npos || argument.find('*') == std::string::npos)
+    if(argument.find('?') != std::string::npos || argument.find('*') != std::string::npos)
     {
       m_complex = true;
       break;
@@ -765,11 +784,15 @@ ExternalCommand::ExternalCommand(const char* cmd_line) : Command(cmd_line)
 
 void ExternalCommand::execute()
 {
-  pid_t sonPid = fork();
+  int sonPid = fork();
   checkSysCall("fork", sonPid);
   if(sonPid == 0)//we are the son
   {
-    checkSysCall("setpgrp", setpgrp());//maybe?
+    SmallShell &smash = SmallShell::getInstance();
+    smash.m_jobs.removeFinishedJobs();
+    if(setpgrp() == -1)
+      perror("smash error: setpgrp failed");
+    // checkSysCall("setpgrp", setpgrp());//maybe?
     if(m_complex == false)//basic command
     {
       basicExternalCommand(m_arg_values[0], m_arg_values);
@@ -798,6 +821,8 @@ void ExternalCommand::execute()
     }
   }
 }
+
+
 
 
 ///..................SPECIAL COMMANDS IMPLEMENTATIONS..................///
@@ -1039,37 +1064,41 @@ void ListDirCommand::execute()
 
   
   fileDescriptor = open(m_arg_count > 1 ? m_arg_values[1] : ".", O_RDONLY | O_DIRECTORY);
-    if (fileDescriptor == -1) {
-        perror("smash error: open failed");
-        return;
+    if (fileDescriptor == -1) 
+    {
+      perror("smash error: open failed");
+      return;
     }
-   int numBytesRead;
-   std::vector<std::string> file_vector;
+    int numBytesRead;
+    std::vector<std::string> file_vector;
     std::vector<std::string> dir_vector;
-    while(true) {
-        numBytesRead = syscall(SYS_getdents, fileDescriptor, buf, BUF_SIZE);
-        if (numBytesRead == -1) {
-            perror("smash error: getdents failed");
-            close(fileDescriptor);
-            return;
-        }
-        if (numBytesRead == 0)
-        {
-          break;
+    while(true) 
+    {
+      numBytesRead = syscall(SYS_getdents, fileDescriptor, buf, BUF_SIZE);
+      if (numBytesRead == -1) 
+      {
+        perror("smash error: getdents failed");
+        close(fileDescriptor);
+        return;
+      }
+      if (numBytesRead == 0)
+      {
+        break;
+      }
+
+      for (bytesPositioned = 0; bytesPositioned < numBytesRead;) 
+      {
+        directoryEntry = (struct linux_dirent *) (buf + bytesPositioned);
+        d_type = *(buf + bytesPositioned + directoryEntry->d_reclen - 1);
+
+        if (d_type == DT_REG){
+          file_vector.emplace_back(directoryEntry->d_name);
+        } else if(d_type == DT_DIR){
+          dir_vector.emplace_back(directoryEntry->d_name);
         }
 
-    for (bytesPositioned = 0; bytesPositioned < numBytesRead;) {
-            directoryEntry = (struct linux_dirent *) (buf + bytesPositioned);
-            d_type = *(buf + bytesPositioned + directoryEntry->d_reclen - 1);
-
-            if (d_type == DT_REG){
-                file_vector.emplace_back(directoryEntry->d_name);
-            } else if(d_type == DT_DIR){
-                dir_vector.emplace_back(directoryEntry->d_name);
-            }
-
-            bytesPositioned += directoryEntry->d_reclen;
-        }
+        bytesPositioned += directoryEntry->d_reclen;
+      }
     }
 
     std::sort(file_vector.begin(), file_vector.end());
