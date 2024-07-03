@@ -2,7 +2,6 @@
 #include <signal.h>
 #include "signals.h"
 #include "Commands.h"
-#include <string.h>
 
 using namespace std;
 
