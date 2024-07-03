@@ -173,8 +173,10 @@ void ForegroundHelper(int jobId)
     return;
   }
   SmallShell::getInstance().setForeground(jobId);
-  std::cout << SmallShell::getInstance().m_jobs.getJobById(jobId)->m_jobName << " " << std::to_string(jobId) << std::endl; 
-  std::cerr << "this is where the waitpid failed" << std::endl;
+  std::cout << SmallShell::getInstance().m_jobs.getJobById(jobId)->m_jobName << " " << std::to_string(jobId) << std::endl;
+  //JobsList::JobEntry* jobToBeMovedToForeground = SmallShell::getInstance().m_jobs.getJobById(jobId);
+  //SmallShell::getInstance().m_jobs.removeJobById(jobId);
+  //checkSysCall("waitpid", waitpid(jobToBeMovedToForeground->m_jobPid, nullptr, 0));
   checkSysCall("waitpid", waitpid(SmallShell::getInstance().m_jobs.getJobById(jobId)->m_jobPid, nullptr, 0));
   SmallShell::getInstance().m_jobs.removeJobById(jobId);
 }
@@ -267,10 +269,6 @@ Command *SmallShell::CreateCommand(const char *cmd_line)//maybe we need to get r
   if (firstWord.empty()) 
   {
         return nullptr;
-  }
-  if (command.find_first_of("|") != std::string::npos)// pipe command
-  {
-    return nullptr;
   }
   
   if (command.find_first_of("|") != std::string::npos)// pipe command
@@ -412,10 +410,7 @@ void JobsList::removeFinishedJobs()
     {
       ++it;
     }
-  }
-
-
-  
+  } 
 }
 
 void JobsList::killAllJobs()
@@ -470,7 +465,7 @@ JobsList::JobEntry* JobsList::getMaxJobId()
 void JobsList::removeJobById(int jobId)
 {
   removeFinishedJobs();
-    for (auto it = m_listOfJobs.begin(); it != m_listOfJobs.end(); )
+  for (auto it = m_listOfJobs.begin(); it != m_listOfJobs.end(); )
   {
       if (it->m_jobId == jobId)
       {
@@ -994,9 +989,7 @@ void GetUserCommand::execute()
 }
 
 PipeCommand::PipeCommand(const char* cmd_line, std::string firstCommand,
-                         std::string secondCommand, bool printToError):
-  Command(cmd_line),
-  m_printToError(printToError)
+                         std::string secondCommand, bool printToError): Command(cmd_line), m_printToError(printToError)
 {
   m_firstCommand = SmallShell::getInstance().CreateCommand(firstCommand.c_str());
   m_secondCommand = SmallShell::getInstance().CreateCommand(secondCommand.c_str());
