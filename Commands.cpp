@@ -671,9 +671,9 @@ void ForegroundCommand:: execute()
                      
                     JobsList::JobEntry* jobToDo = &(m_jobs->m_listOfJobs[i]);
                     std::cout << jobToDo->m_jobName << " " << jobToDo->m_jobPid << std::endl;
-                    SmallShell::getInstance().setForeground(jobToDo->m_jobId);
+                    SmallShell::getInstance().setForeground(jobToDo->m_jobPid);
                     waitpid(jobToDo->m_jobPid, nullptr, WUNTRACED);
-                    SmallShell::getInstance().setForeground(0);
+                    //SmallShell::getInstance().setForeground(0);
                     m_jobs->removeJobById(jobToDo->m_jobId);  
                     break;
                 }
@@ -693,9 +693,9 @@ void ForegroundCommand:: execute()
         
         JobsList::JobEntry* lastJob = m_jobs->getLastJob();
         std::cout << lastJob->m_jobName << " " << lastJob->m_jobPid << std::endl;
-        SmallShell::getInstance().setForeground(lastJob->m_jobId);
+        SmallShell::getInstance().setForeground(lastJob->m_jobPid);
         waitpid(lastJob->m_jobPid, nullptr, 0);
-        SmallShell::getInstance().setForeground(0);
+        //SmallShell::getInstance().setForeground(0);
         m_jobs->removeJobById(lastJob->m_jobId);   
     }
     else if(m_arg_count != 2 && m_arg_count != 1)
