@@ -5,6 +5,7 @@
 #include <map>
 #include <iostream>
 
+
 #define COMMAND_MAX_LENGTH (200)
 #define COMMAND_MAX_ARGS (20)
 #define ADRRESS_MAX_LENGTH (1000)
@@ -15,19 +16,18 @@ class Command
         char* m_cmd_line;
         char *m_arg_values[COMMAND_MAX_ARGS + 1];
         int m_arg_count;
-        bool m_background;//?????????????????????????????????????????????????????????????????????????
+        bool m_background;
 
     public:
+        char* m_commandForPrintJobs;
         char* m_cmd_line_with_background;
         Command(const char *cmd_line, bool is_background);
         Command(const char *cmd_line);
+        //Command(const char* cmd_line, char* aliasCommand);
 
         virtual ~Command();
 
         virtual void execute() = 0;
-        //virtual void prepare();
-    //virtual void cleanup();
-    // TODO: Add your extra methods if needed
 };
 
 class BuiltInCommand : public Command 
@@ -86,6 +86,8 @@ class JobsList
 
         JobEntry *getJobById(int jobId);
 
+        JobEntry* getMaxJobId();
+
         void removeJobById(int jobId);
 
         JobEntry *getLastJob(int *lastJobId);
@@ -95,7 +97,7 @@ class JobsList
 };
 
 
-///..........................SPECIAL IN COMMANDS.........................///
+///..........................SPECIAL IN COMMANDS.......................///
 
 
 class PipeCommand : public Command 
@@ -269,6 +271,8 @@ public:
     bool checkValidName(std::string name);
 
     void insertAlias(std::string name, std::string command);
+
+    void parseAliasCommand();
 };
 
 class unaliasCommand : public BuiltInCommand {
@@ -293,7 +297,9 @@ private:
 public:
     std::string m_lastPwd;
     JobsList m_jobs;
-    std::vector<std::pair<std::string, std::string>> m_aliases_new;
+    std::vector<std::pair<std::string, std::string>> m_aliases_new;//(new, original)
+
+    const char* findAlias(const char*);
 
     Command *CreateCommand(const char *cmd_line);
 
