@@ -122,7 +122,7 @@ void checkSysCall(const char* sysCall, int currDir)
   {
     std::string tmp = "smash error: "; 
     tmp += sysCall;                  
-    tmp += " failed";                  
+    tmp += " failed";   
     perror(tmp.c_str()); //???????????
   }
 }
@@ -264,11 +264,11 @@ Command *SmallShell::CreateCommand(const char *cmd_line)//maybe we need to get r
 
   string command = _trim(string(cmd_line));
   string firstWord = command.substr(0, command.find_first_of(" \n"));
-
-  if (firstWord.empty()) {
+  if (firstWord.empty()) 
+  {
         return nullptr;
   }
-  if (command.find_first_of("|") != std::string::npos)
+  if (command.find_first_of("|") != std::string::npos)// pipe command
   {
     return nullptr;
   }
@@ -403,7 +403,7 @@ void JobsList::removeFinishedJobs()
   {
     int status;
     int result = waitpid(it->m_jobPid, &status, WNOHANG);
-    checkSysCall("waitpid", result);
+    // checkSysCall("waitpid - remove finished job", result);
     if (result != 0)
     {
       it = m_listOfJobs.erase(it); //Erase returns the next iterator
@@ -413,6 +413,9 @@ void JobsList::removeFinishedJobs()
       ++it;
     }
   }
+
+
+  
 }
 
 void JobsList::killAllJobs()
@@ -637,7 +640,7 @@ void ForegroundCommand:: execute()
     
     if(SmallShell::getInstance().m_jobs.m_listOfJobs.empty())
     {
-      std::cerr << "smash error: fg: job list is empty" << std::endl;
+      std::cerr << "smash error: fg: jobs list is empty" << std::endl;
       return;
     }
     else
@@ -658,7 +661,11 @@ void ForegroundCommand:: execute()
   {
 
     int jobId = std::stoi(m_arg_values[1]);
-    
+    if(jobId < 0)
+    {
+      std::cerr << "smash error: fg: invalid arguments" << std::endl;
+      return;
+    }
     ForegroundHelper(jobId);
     return;
   }
@@ -766,7 +773,7 @@ bool aliasCommand::checkValidName(std::string name)
 
 void aliasCommand::insertAlias(std::string name, std::string Command)
 {
-  SmallShell &smash = SmallShell::getInstance();
+  SmallShell &smash = SmallShell::getInstance();//think this is wrong
   smash.m_aliases_new.push_back({name, Command});
 }
 
@@ -858,7 +865,7 @@ ExternalCommand::ExternalCommand(const char* cmd_line) : Command(cmd_line)
   for(int i = 0; i < m_arg_count; i++)
   {
     std::string argument = std::string(m_arg_values[i]);
-    if(argument.find('?') == std::string::npos || argument.find('*') == std::string::npos)
+    if(argument.find('?') != std::string::npos || argument.find('*') != std::string::npos)
     {
       m_complex = true;
       break;
@@ -868,11 +875,15 @@ ExternalCommand::ExternalCommand(const char* cmd_line) : Command(cmd_line)
 
 void ExternalCommand::execute()
 {
-  pid_t sonPid = fork();
+  int sonPid = fork();
   checkSysCall("fork", sonPid);
   if(sonPid == 0)//we are the son
   {
-    checkSysCall("setpgrp", setpgrp());//maybe?
+    SmallShell &smash = SmallShell::getInstance();
+    smash.m_jobs.removeFinishedJobs();
+    if(setpgrp() == -1)
+      perror("smash error: setpgrp failed");
+    // checkSysCall("setpgrp", setpgrp());//maybe?
     if(m_complex == false)//basic command
     {
       basicExternalCommand(m_arg_values[0], m_arg_values);
@@ -901,6 +912,8 @@ void ExternalCommand::execute()
     }
   }
 }
+
+
 
 
 ///..................SPECIAL COMMANDS IMPLEMENTATIONS..................///
