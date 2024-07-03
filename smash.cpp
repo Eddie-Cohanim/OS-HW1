@@ -1,22 +1,27 @@
 #include <iostream>
+#include <unistd.h>
+#include <sys/wait.h>
 #include <signal.h>
-#include "signals.h"
 #include "Commands.h"
-#include <string.h>
+#include "signals.h"
 
-using namespace std;
-
-void ctrlCHandler(int sig_num) 
-{
-    std::cout << "smash: got ctrl-C" << std::endl;
-    SmallShell& smash = SmallShell::getInstance();
-    int foregroundId = smash.getForeground();
-    if (foregroundId != -1) 
-    {
-        int result = kill(smash.m_jobs.getJobById(foregroundId)->m_jobPid, sig_num);
-        checkSysCall("kill", result);
-        std::cout << "smash: process " << foregroundId << " was killed"<< std::endl;
-        smash.setForeground(-1);
-
+int main(int argc, char *argv[]) {
+    if (signal(SIGINT, ctrlCHandler) == SIG_ERR) {
+        perror("smash error: failed to set ctrl-C handler");
     }
+
+    //TODO: setup sig alarm handler
+
+    SmallShell &smash = SmallShell::getInstance();
+    while (true) {
+        std::cout << smash.getPrompt() << ">" << " ";
+        std::string cmd_line;
+        std::getline(std::cin, cmd_line);
+        if (cmd_line.empty() == true)
+        {
+            continue;
+        }
+        smash.executeCommand(cmd_line.c_str());
+    }
+    return 0;
 }
