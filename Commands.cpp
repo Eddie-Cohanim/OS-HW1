@@ -163,24 +163,6 @@ void parsePipeCommand(const string& commandString, std::string* parsedPipeComman
   }
 }
 
-void ForegroundHelper(int jobId)
-{
-  //SmallShell &smash = SmallShell::getInstance();
-
-  if(SmallShell::getInstance().m_jobs.getJobById(jobId) == nullptr)
-  {
-    std::cerr << "smash error: fg: job-id " << jobId << " does not exist" << std::endl;
-    return;
-  }
-  SmallShell::getInstance().setForeground(jobId);
-  std::cout << SmallShell::getInstance().m_jobs.getJobById(jobId)->m_jobName << " " << std::to_string(jobId) << std::endl;
-  //JobsList::JobEntry* jobToBeMovedToForeground = SmallShell::getInstance().m_jobs.getJobById(jobId);
-  //SmallShell::getInstance().m_jobs.removeJobById(jobId);
-  //checkSysCall("waitpid", waitpid(jobToBeMovedToForeground->m_jobPid, nullptr, 0));
-  checkSysCall("waitpid", waitpid(SmallShell::getInstance().m_jobs.getJobById(jobId)->m_jobPid, nullptr, 0));
-  SmallShell::getInstance().m_jobs.removeJobById(jobId);
-}
-
 bool isAlias(const char* cmd_line, char* alias)
 {
   //bool isBackground = _isBackgroundComamnd(cmd_line);
@@ -221,12 +203,12 @@ const char* createNewCommandLine(const char* cmd_line, const char* aliasMeaning)
 
 void SmallShell::setForeground(int foregroundId)
 {
-  m_foregroundId = foregroundId;
+  m_foregroundPid = foregroundId;
 }
 
 int SmallShell::getForeground()
 {
-  return m_foregroundId;
+  return m_foregroundPid;
 }
 
 void SmallShell::setPrompt(const char *new_prompt)
@@ -253,22 +235,18 @@ SmallShell::SmallShell()
 {
   m_prompt = "smash";
   m_lastPwd = std::string(); 
-  m_foregroundId = -1;
+  m_foregroundPid = -1;
 }
 
-SmallShell::~SmallShell()
-{
-// TODO: add your implementation
-}
+SmallShell::~SmallShell() {}
 
 Command *SmallShell::CreateCommand(const char *cmd_line)//maybe we need to get rid of the & sign?
 {
-
   string command = _trim(string(cmd_line));
   string firstWord = command.substr(0, command.find_first_of(" \n"));
   if (firstWord.empty()) 
   {
-        return nullptr;
+    return nullptr;
   }
   
   if (command.find_first_of("|") != std::string::npos)// pipe command
@@ -280,11 +258,11 @@ Command *SmallShell::CreateCommand(const char *cmd_line)//maybe we need to get r
   }
   else if (command.find_first_of(">") != std::string::npos)
   {
-      return new RedirectionCommand(cmd_line);
+    return new RedirectionCommand(cmd_line);
   }
   else if (command.find_first_of(">>") != std::string::npos)
   {
-      return new RedirectionCommand(cmd_line);
+    return new RedirectionCommand(cmd_line);
   }
   else if (firstWord.compare("chprompt") == 0)
   {
@@ -326,9 +304,20 @@ Command *SmallShell::CreateCommand(const char *cmd_line)//maybe we need to get r
   {
     return new unaliasCommand(cmd_line);
   }  
+  else if(firstWord.compare("listdir") == 0)
+  {
+    return new ListDirCommand(cmd_line);
+  }
+  else if(firstWord.compare("getuser") == 0)
+  {
+    return new GetUserCommand(cmd_line);
+  }
+  else if(firstWord.compare("watch") == 0)
+  {
+    return new WatchCommand(cmd_line);
+  }
   else
   {
-    
     return new ExternalCommand(cmd_line);
   }
 
@@ -356,8 +345,7 @@ void SmallShell::executeCommand(const char *cmd_line)
     return;
   }
   command->execute();
-  //std::cout << "it finished executing the command" << std::endl;
-  //delete command;
+
 }
 
 const char* SmallShell::findAlias(const char* cmd_line)
@@ -479,14 +467,13 @@ void JobsList::removeJobById(int jobId)
   }
 }
 
-JobsList::JobEntry* JobsList::getLastJob(int* lastJobId)
+JobsList::JobEntry* JobsList::getLastJob()
 {
   removeFinishedJobs();
   if(m_listOfJobs.empty())
   {
       return nullptr;
-  } 
-  *lastJobId = m_listOfJobs.back().m_jobId;
+  }  
   return &m_listOfJobs.back();
 }
 
@@ -630,51 +617,90 @@ ForegroundCommand::ForegroundCommand(const char* cmd_line, JobsList* jobs) : Bui
 
 void ForegroundCommand:: execute()
 {
-  if(m_arg_count == 1)
-  {
-    
-    if(SmallShell::getInstance().m_jobs.m_listOfJobs.empty())
-    {
-      std::cerr << "smash error: fg: jobs list is empty" << std::endl;
-      return;
-    }
-    else
-    {
-      int jobId = SmallShell::getInstance().m_jobs.getMaxJobId()->m_jobId;
-      ForegroundHelper(jobId);
-      return;
-    }
-  }
-  
   if(m_arg_count > 2)
   {
     std::cerr << "smash error: fg: invalid arguments" << std::endl;
     return;
   }
-    
-  try
+  if(m_arg_count == 2)
   {
-
-    int jobId = std::stoi(m_arg_values[1]);
-    if(jobId < 0)
+    try
+    {
+      int argValue = stoi(m_arg_values[1]);
+      if(argValue < 0 || std::string(m_arg_values[1]).find_first_not_of("0123456789") != std::string::npos)
+      {
+        std::cerr << "smash error: fg: invalid arguments" << std::endl;
+        return;
+      }
+    }
+    catch(const std::exception& e)
     {
       std::cerr << "smash error: fg: invalid arguments" << std::endl;
       return;
     }
-    ForegroundHelper(jobId);
-    return;
+    for(unsigned int i = 0; i <= m_jobs->m_listOfJobs.size(); i++)
+    {
+      if(i == m_jobs->m_listOfJobs.size())
+      {
+        try
+        {
+          stoi(m_arg_values[1]);
+        }
+        catch(const std::exception& e)
+        {
+          std::cerr << "smash error: fg: invalid arguments" << std::endl;
+          break;
+        }
+        std::cerr << "smash error: fg: job-id " << m_arg_values[1] << " does not exist" << std::endl;
+        break;
+      }
+      try
+      {
+        /*if(m_arg_count > 2)
+        {
+          std::cerr << "smash error: fg: invalid arguments" << std::endl;
+          break;
+        }*/
+        if(m_jobs->m_listOfJobs[i].m_jobId == stoi(m_arg_values[1]))
+        {
+          //int status;
+            
+          JobsList::JobEntry* jobToDo = &(m_jobs->m_listOfJobs[i]);
+          std::cout << jobToDo->m_jobName << " " << jobToDo->m_jobPid << std::endl;
+          SmallShell::getInstance().setForeground(jobToDo->m_jobPid);
+          waitpid(jobToDo->m_jobPid, nullptr, WUNTRACED);
+          //SmallShell::getInstance().setForeground(0);
+          m_jobs->removeJobById(jobToDo->m_jobId);  
+          break;
+        }
+      }
+      catch(const std::exception& e)
+      {
+        std::cerr << "smash error: fg: invalid arguments" << std::endl;
+        break;
+      }
+    }
   }
-    catch(std::exception &e)
+  else if(m_jobs->m_listOfJobs.size() == 0)
   {
-    std::cerr << "smash error: fg: invalid arguments" << std::endl;
-    return;
+    cerr << "smash error: fg: jobs list is empty" << std::endl;
   }
+  else if(m_arg_count == 1)
+  {
+    //int status;
+      
+    JobsList::JobEntry* lastJob = m_jobs->getLastJob();
+    std::cout << lastJob->m_jobName << " " << lastJob->m_jobPid << std::endl;
+    SmallShell::getInstance().setForeground(lastJob->m_jobPid);
+    waitpid(lastJob->m_jobPid, nullptr, 0);
+    //SmallShell::getInstance().setForeground(0);
+    m_jobs->removeJobById(lastJob->m_jobId);   
+  }
+  else if(m_arg_count != 2 && m_arg_count != 1)
+    std::cerr << "smash error: fg: invalid arguments" << std::endl;
 }
 
-KillCommand::KillCommand(const char* cmd_line, JobsList* jobs) : BuiltInCommand(cmd_line)
-{
-  m_jobs = jobs;
-}
+KillCommand::KillCommand(const char* cmd_line, JobsList* jobs) : BuiltInCommand(cmd_line), m_jobs(jobs){}
 
 void KillCommand::execute()
 { 
@@ -870,7 +896,7 @@ ExternalCommand::ExternalCommand(const char* cmd_line) : Command(cmd_line)
 
 void ExternalCommand::execute()
 {
-  int sonPid = fork();
+  pid_t sonPid = fork();
   checkSysCall("fork", sonPid);
   if(sonPid == 0)//we are the son
   {
@@ -895,9 +921,9 @@ void ExternalCommand::execute()
   {
     if (m_background == false)
     {
-      int status; 
+      //int status; 
       SmallShell::getInstance().setForeground(sonPid);
-      checkSysCall("waitpid", waitpid(sonPid, &status, 0)); 
+      checkSysCall("waitpid", waitpid(sonPid, nullptr, 0)); 
       SmallShell::getInstance().setForeground(-1);
     }
     
@@ -919,15 +945,16 @@ RedirectionCommand::RedirectionCommand(const char* cmd_line) : Command(cmd_line)
   std::string trimmedCmdLine = _trim(cmd_line);
   int arrowLocation = trimmedCmdLine.find_first_of('>');
   m_append = false;
-  m_commandLine = trimmedCmdLine.substr(0, arrowLocation);
+  m_commandLine = trimmedCmdLine.substr(0, arrowLocation);// m_commandLine is the left side of the command
 
   if('>' == trimmedCmdLine[arrowLocation + 1])
   {
     //arrowLocation++; 
     m_append = true;
   }
+  
   int i;
-  for(i = 0; i < COMMAND_MAX_ARGS; i++)
+  for(i = 0; i < m_arg_count; i++)
   {
     std::string commandString = _trim(m_arg_values[i]);
     if(commandString.front() == '>')
@@ -936,8 +963,7 @@ RedirectionCommand::RedirectionCommand(const char* cmd_line) : Command(cmd_line)
       break;
     }
   }
-  m_outPath =  m_arg_values[i]; 
-
+  m_outPath =  m_arg_values[i];
 }
 
 void RedirectionCommand::execute()
@@ -1187,11 +1213,17 @@ void ListDirCommand::execute()
 
     std::sort(file_vector.begin(), file_vector.end());
     std::sort(dir_vector.begin(), dir_vector.end());
-    for(auto &_file : file_vector){
+    for(auto &_file : file_vector)
+    {
         std::cout << "file: "<< _file << std::endl;
     }
-    for(auto &_dir : dir_vector){
-        std::cout << "directory: "<< _dir << std::endl;
+    for(auto &_dir : dir_vector)
+    {
+      if(_dir.compare(".") == 0 || _dir.compare("..") == 0 )
+      {
+        continue;
+      }
+      std::cout << "directory: "<< _dir << std::endl;
     }
 }
 
