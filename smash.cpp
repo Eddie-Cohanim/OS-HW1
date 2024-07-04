@@ -25,13 +25,3 @@ int main(int argc, char *argv[]) {
     }
     return 0;
 }
-
-
-/*chprompt
-chprompt a b
-
-chprompt b
-chprompt
-chprompt Jeffry_Epstein_didn’t_kill_himself
-quit
-*/

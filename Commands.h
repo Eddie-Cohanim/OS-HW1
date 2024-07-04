@@ -90,7 +90,7 @@ class JobsList
 
         void removeJobById(int jobId);
 
-        JobEntry *getLastJob(int *lastJobId);
+        JobEntry *getLastJob();
 
         JobEntry *getLastStoppedJob(int *jobId);
         // TODO: Add extra methods or modify exisitng ones as needed
@@ -291,7 +291,7 @@ public:
 class SmallShell {
 private:
     std::string m_prompt;
-    int m_foregroundId;
+    int m_foregroundPid;
     SmallShell();
 
 public:
