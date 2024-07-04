@@ -587,15 +587,16 @@ void ChangeDirCommand:: execute()
       SmallShell::getInstance().setLastPwd(lastDir);
     }
   }
-  else{
-     char* lastDir = new char[ADRRESS_MAX_LENGTH];
-  checkSysCallPtr("cwd", getcwd(lastDir, sizeof(char) * ADRRESS_MAX_LENGTH));
-  int result = chdir(m_arg_values[1]);
-  checkSysCall("chdir", result);
-  if(result != FAIL)
+  else
   {
-    SmallShell::getInstance().setLastPwd(lastDir);
-  }
+    char* lastDir = new char[ADRRESS_MAX_LENGTH];
+    checkSysCallPtr("cwd", getcwd(lastDir, sizeof(char) * ADRRESS_MAX_LENGTH));
+    int result = chdir(m_arg_values[1]);
+    checkSysCall("chdir", result);
+    if(result != FAIL)
+    {
+      SmallShell::getInstance().setLastPwd(lastDir);
+    }
   }
  
 }
@@ -949,7 +950,7 @@ RedirectionCommand::RedirectionCommand(const char* cmd_line) : Command(cmd_line)
 
   if('>' == trimmedCmdLine[arrowLocation + 1])
   {
-    //arrowLocation++; 
+    arrowLocation++; 
     m_append = true;
   }
   
@@ -957,10 +958,18 @@ RedirectionCommand::RedirectionCommand(const char* cmd_line) : Command(cmd_line)
   for(i = 0; i < m_arg_count; i++)
   {
     std::string commandString = _trim(m_arg_values[i]);
-    if(commandString.front() == '>')
+    if(commandString.front() == '>' || commandString.back()== '>')
     {
       i++;
       break;
+    }
+    else
+    {
+      if(commandString.find_last_of('>') != std::string::npos)
+      {
+        m_outPath = (trimmedCmdLine.substr(arrowLocation + 1)).c_str();
+        return;
+      }
     }
   }
   m_outPath =  m_arg_values[i];
@@ -978,6 +987,10 @@ void RedirectionCommand::execute()
   {
     newPathFileDiscriptor = open(m_outPath, O_WRONLY | O_CREAT | O_TRUNC , ALLPERMISSIONS);
     checkSysCall("open", newPathFileDiscriptor);
+  }
+  if(newPathFileDiscriptor == -1)// error already printed in syscall. now only nee to return
+  {
+    return;
   }
 
   int oldPathFileDiscriptor = dup(1); // 1 --> output stream of the process
